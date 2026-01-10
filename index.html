@@ -3,17 +3,147 @@
 <head>
   <meta charset="UTF-8">
   <title>Hastane Dokümanları</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    :root {
+      --primary: #1f6feb;
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 520px;
+      padding: 20px;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+    }
+
+    h1 {
+      margin-top: 0;
+      margin-bottom: 10px;
+      font-size: 1.6rem;
+      text-align: center;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 30px;
+    }
+
+    .download-group {
+      display: grid;
+      gap: 15px;
+    }
+
+    button {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 18px;
+      font-size: 1rem;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      background: var(--primary);
+      color: white;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+      box-shadow: 0 4px 10px rgba(31, 111, 235, 0.25);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 14px rgba(31, 111, 235, 0.35);
+    }
+
+    button:active {
+      transform: translateY(0);
+      box-shadow: 0 3px 8px rgba(31, 111, 235, 0.25);
+    }
+
+    .label {
+      font-weight: 600;
+    }
+
+    .meta {
+      font-size: 0.85rem;
+      opacity: 0.9;
+    }
+
+    .footer {
+      margin-top: 25px;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    @media (max-width: 480px) {
+      .card {
+        padding: 22px;
+      }
+
+      h1 {
+        font-size: 1.4rem;
+      }
+    }
+  </style>
 </head>
 <body>
 
-  <h1>Hastane İçi Dokümanlar</h1>
+  <div class="container">
+    <div class="card">
+      <h1>Hastane İçi Dokümanlar</h1>
+      <div class="subtitle">
+        Yetkili personel için resmi şablonlar
+      </div>
 
-<button onclick="downloadBelgematik()">Belgematik indir</button>
-<button onclick="downloadDSMatik()">DS Matik indir</button>
+      <div class="download-group">
+        <button onclick="downloadBelgematik()">
+          <span class="label">Belgematik</span>
+          <span class="meta">4 dosya • ZIP</span>
+        </button>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-<script src="download.js"></script>
+        <button onclick="downloadDSMatik()">
+          <span class="label">DS Matik</span>
+          <span class="meta">2 dosya • ZIP</span>
+        </button>
+      </div>
+
+      <div class="footer">
+        🔒 Sadece hastane içi kullanım içindir
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="download.js"></script>
 
 </body>
 </html>
+
