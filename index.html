@@ -8,23 +8,12 @@
 
   <h1>Hastane İçi Dokümanlar</h1>
 
-  <h2>Excel Dosyaları</h2>
-  <ul>
-    <li>
-      <a href="excel/BelgeMatik.xlsm">
-        Belgematik Excel Dosyası
-      </a>
-    </li>
-  </ul>
+<button onclick="downloadBelgematik()">Belgematik indir</button>
+<button onclick="downloadDSMatik()">DS Matik indir</button>
 
-  <h2>Word Şablonları</h2>
-  <ul>
-    <li><a href="word/fonetahkam(x4).docx">Word Şablonu 1</a></li>
-    <li><a href="word/istemsizyatis(x2).docx">Word Şablonu 2</a></li>
-    <li><a href="word/zorunlusk(x2).docx">Word Şablonu 3</a></li>
-  </ul>
-
-  <p><small>Son güncelleme: 2026</small></p>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="download.js"></script>
 
 </body>
 </html>
