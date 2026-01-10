@@ -112,15 +112,19 @@
       }
     }
 .illustration {
+  position: relative;
   display: flex;
   justify-content: center;
-  margin: 20px 0 30px;
+  margin-top: -80px;   /* kartın üstünden çıkma hissi */
+  margin-bottom: 10px;
+  pointer-events: none;
 }
 
 .illustration img {
-  max-width: 180px;
-  width: 100%;
+  width: 260px;        /* karakteri büyüt */
+  max-width: 90%;
   height: auto;
+  filter: drop-shadow(0 12px 20px rgba(0,0,0,0.2));
 }
     
   </style>
