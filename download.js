@@ -35,3 +35,11 @@ function downloadDSMatik() {
     "DSMatik_Dokumanlar.zip"
   );
 }
+
+function downloadDSTurbo() {
+  downloadZip(
+    "dsturbo",
+    ["DS_TURBO_V36.txt"],
+    "DS_TURBO_V36.zip"
+  );
+}
