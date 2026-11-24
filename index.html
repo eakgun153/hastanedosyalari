@@ -203,6 +203,198 @@
       font-size: 0.78rem;
       margin: 12px 0 0;
     }
+  
+    /* DS TURBO indirme merkezi – illüstrasyondaki tasarımın responsive sürümü */
+    :root {
+      --primary: #0867ed;
+      --bg: linear-gradient(135deg,#dbf0ff 0%,#a7d9ff 53%,#e0f4ff 100%);
+      --text: #091c44;
+      --muted: #697386;
+    }
+    body { padding: 30px 18px; align-items: flex-start; }
+    .container { max-width: 1040px; padding: 0; }
+    .card {
+      padding: 40px 48px 32px;
+      border-radius: 34px;
+      box-shadow: 0 18px 50px rgba(42,103,168,.20);
+      background: linear-gradient(180deg,#ffffff 0%,#fcfdff 100%);
+    }
+    .illustration {
+      display: block;
+      margin: 0 0 28px;
+      pointer-events: none;
+    }
+    .illustration img {
+      width: 100%;
+      max-width: none;
+      height: auto;
+      aspect-ratio: 918 / 392;
+      object-fit: cover;
+      display: block;
+      border-radius: 20px 20px 0 0;
+      filter: none;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem,5.3vw,3.6rem);
+      color: #071a40;
+      font-weight: 800;
+      letter-spacing: -.045em;
+      line-height: 1.12;
+    }
+    .subtitle {
+      margin: 12px 0 42px;
+      font-size: clamp(.95rem,2.1vw,1.7rem);
+      color: #677083;
+      line-height: 1.4;
+    }
+    .download-group { display: grid; gap: 20px; }
+    .download-group > .download-btn {
+      width: 100%;
+      min-height: 116px;
+      padding: 14px 24px;
+      display: grid;
+      grid-template-columns: 86px minmax(0,1fr) auto 46px;
+      gap: 22px;
+      align-items: center;
+      text-align: left;
+      background: linear-gradient(180deg,#147af6 0%,#0865e6 55%,#0751bd 100%);
+      border: 1px solid #4a9dff;
+      border-radius: 24px;
+      box-shadow: 0 6px 12px rgba(13,78,176,.20), inset 0 1px 0 rgba(255,255,255,.24);
+      transition: transform .14s ease, box-shadow .14s ease, filter .14s ease;
+      color: white;
+      line-height: 1.2;
+    }
+    .download-group > .download-btn:hover {
+      filter: brightness(1.07);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 18px rgba(13,78,176,.28);
+    }
+    .download-group > .download-btn:active { transform: translateY(0); }
+    .download-group > .download-btn:focus-visible,
+    .dsturbo-help summary:focus-visible,
+    .dsturbo-infografik:focus-visible {
+      outline: 3px solid #1d88ff;
+      outline-offset: 3px;
+    }
+    .button-icon {
+      height: 75px;
+      border-right: 2px solid rgba(255,255,255,.55);
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    .button-icon svg { height: 58px; width: 60px; }
+    .button-icon svg, .download-mark svg, .guide-book svg, .footer-lock svg {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .download-btn .label {
+      font-size: clamp(1.24rem,2.8vw,2.2rem);
+      font-weight: 800;
+      letter-spacing: -.015em;
+      min-width: 0;
+      color: #fff;
+    }
+    .download-btn .meta { font-size: clamp(.85rem,1.8vw,1.25rem); opacity: .97; white-space: nowrap; font-weight: 500; }
+    .download-mark { display: flex; align-items: center; justify-content: center; }
+    .download-mark svg { width: 36px; height: 36px; stroke-width: 2.2; }
+
+    .dsturbo-help {
+      margin-top: 40px;
+      border: 1px solid #bcd7f5;
+      background: linear-gradient(180deg,#e8f4ff,#eff7ff);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: none;
+    }
+    .dsturbo-help summary {
+      min-height: 84px;
+      padding: 19px 26px;
+      color: #14254e;
+      font-size: clamp(1rem,2vw,1.47rem);
+      font-weight: 800;
+      line-height: 1.25;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 16px;
+    }
+    .dsturbo-help summary::after { content: "⌄"; margin-left: auto; font-size: 1.8rem; font-weight: 400; }
+    .dsturbo-help[open] summary::after { content: "⌃"; }
+    .guide-book { flex: 0 0 auto; width: 38px; height: 38px; color: #1374ed; display: flex; }
+    .guide-book svg { width: 100%; height: 100%; stroke-width: 2; }
+    .guide-title { flex: 1; }
+    .dsturbo-help-body { background: #fff; padding: 20px 26px 24px; }
+    .footer {
+      border-top: 1px solid #dce4ee;
+      margin-top: 40px;
+      padding-top: 26px;
+      text-align: center;
+      color: #677083;
+      font-size: clamp(.88rem,1.7vw,1.2rem);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 13px;
+    }
+    .footer-lock { width: 24px; height: 24px; display: flex; color: #677083; }
+    .footer-lock svg { width: 100%; height: 100%; stroke-width: 2; }
+    @media (max-width: 720px) {
+      body { padding: 16px 12px; }
+      .card { padding: 24px 26px 24px; border-radius: 26px; }
+      .illustration { margin-bottom: 22px; }
+      .subtitle { margin-bottom: 30px; }
+      .download-group { gap: 12px; }
+      .download-group > .download-btn {
+        min-height: 82px;
+        border-radius: 15px;
+        padding: 10px 15px;
+        gap: 14px;
+        grid-template-columns: 56px minmax(0,1fr) auto 28px;
+      }
+      .button-icon { height: 51px; }
+      .button-icon svg { width: 41px; height: 41px; }
+      .download-mark svg { width: 27px; height: 27px; }
+      .dsturbo-help { margin-top: 28px; border-radius: 13px; }
+      .dsturbo-help summary { min-height: 62px; padding: 12px 15px; gap: 10px; }
+      .guide-book { width: 27px; height: 27px; }
+      .footer { margin-top: 27px; padding-top: 20px; }
+    }
+    @media (max-width: 440px) {
+      body { padding: 10px 8px; }
+      .card { padding: 19px 16px 22px; border-radius: 22px; }
+      .illustration { margin-bottom: 16px; }
+      h1 { font-size: clamp(1.7rem,7vw,2rem); letter-spacing: -.04em; }
+      .subtitle { margin-top: 8px; margin-bottom: 25px; font-size: .84rem; }
+      .download-group > .download-btn {
+        min-height: 73px;
+        padding: 8px 11px;
+        gap: 9px;
+        grid-template-columns: 44px minmax(0,1fr) auto 22px;
+        border-radius: 13px;
+      }
+      .button-icon { height: 43px; border-right-width: 1px; }
+      .button-icon svg { width: 34px; height: 34px; }
+      .download-mark svg { width: 22px; height: 22px; }
+      .download-btn .label { font-size: clamp(1rem,4.7vw,1.25rem); }
+      .download-btn .meta { font-size: clamp(.65rem,2.7vw,.83rem); }
+      .dsturbo-help { margin-top: 25px; }
+      .dsturbo-help summary { font-size: .88rem; padding: 13px 12px; }
+      .dsturbo-help summary::after { font-size: 1.2rem; }
+      .guide-book { width: 25px; height: 25px; }
+      .dsturbo-help-body { padding: 14px 12px 20px; }
+      .footer { font-size: .78rem; gap: 7px; }
+      .footer-lock { width: 19px; height: 19px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .download-group > .download-btn { transition: none; }
+    }
+
   </style>
 </head>
 <body>
@@ -211,7 +403,7 @@
    <div class="card">
 
   <div class="illustration">
-    <img src="https://sade-ce.com/hunili.png" alt="Hunili psikiyatri karakteri">
+    <img src="dsturbo/site-hero-psychology.webp" alt="Gülümseyen gözlüklü beyin doktor; psikiyatri kitapları ve terapi odası çizimi" width="918" height="392" decoding="async" fetchpriority="high">
   </div>
 
   <h1>Hastane Dokümanları</h1>
@@ -221,25 +413,31 @@
 
       
       <div class="download-group">
-        <button onclick="downloadBelgematik()">
+        <button type="button" class="download-btn" onclick="downloadBelgematik()" aria-label="Belgematik — 4 dosya • ZIP indir">
+          <span class="button-icon"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M21 5h25l12 12v40H21a5 5 0 0 1-5-5V10a5 5 0 0 1 5-5Z"/><path d="M46 5v12h12"/><path d="M15 16H9a4 4 0 0 0-4 4v37a3 3 0 0 0 3 3h34"/><path d="M26 29h22M26 38h20M26 47h12"/></svg></span>
           <span class="label">Belgematik</span>
           <span class="meta">4 dosya • ZIP</span>
+          <span class="download-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5"/><path d="M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg></span>
         </button>
 
-        <button onclick="downloadDSMatik()">
+        <button type="button" class="download-btn" onclick="downloadDSMatik()" aria-label="DS Matik — 2 dosya • ZIP indir">
+          <span class="button-icon"><svg viewBox="0 0 64 64" aria-hidden="true"><rect x="6" y="6" width="52" height="52" rx="3"/><path d="M6 21h52M6 36h52M23 21v37M40 21v17"/><path d="m44 46 5 5 8-10"/></svg></span>
           <span class="label">DS Matik</span>
           <span class="meta">2 dosya • ZIP</span>
+          <span class="download-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5"/><path d="M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg></span>
         </button>
 
-        <button onclick="downloadDSTurbo()">
+        <button type="button" class="download-btn" onclick="downloadDSTurbo()" aria-label="DS TURBO — V36 • ZIP indir">
+          <span class="button-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2 2 0 0 0-2.91-.09"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6.05 11A22 22 0 0 1 12 15Z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/><circle cx="16" cy="8" r="2"/></svg></span>
           <span class="label">DS TURBO</span>
           <span class="meta">V36 • ZIP</span>
+          <span class="download-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5"/><path d="M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg></span>
         </button>
       </div>
 
       <!-- DS TURBO: açılır yardım bölümü; indirme butonları ve kodları değiştirilmedi -->
       <details class="dsturbo-help">
-        <summary>📘 DS TURBO · Kullanım kılavuzu ve kurulum</summary>
+        <summary><span class="guide-book"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6c-3-2.5-7-2.5-10-2v15c4-1 7 0 10 2m0-15c3-2.5 7-2.5 10-2v15c-4-1-7 0-10 2m0-15v15"/></svg></span><span class="guide-title">DS TURBO · Kullanım kılavuzu ve kurulum</span></summary>
         <div class="dsturbo-help-body">
           <h2>DS TURBO nasıl çalıştırılır?</h2>
           <ol>
@@ -266,9 +464,7 @@
         </div>
       </details>
 
-      <div class="footer">
-        🔒 Sadece hastane içi kullanım içindir
-      </div>
+      <div class="footer"><span class="footer-lock"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15" r="1"/><path d="M12 16v2"/></svg></span><span>Sadece hastane içi kullanım içindir</span></div>
     </div>
   </div>
 
