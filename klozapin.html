@@ -36,66 +36,65 @@
     .btn{border:1px solid #2168c6;border-radius:10px;background:#176add;padding:10px 16px;color:white;font-size:13px;font-weight:650;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
     .btn:hover{background:#105abd}
     .btn svg{width:17px;height:17px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
-    .weeks{display:grid;gap:12px}
-    .week{border:1px solid var(--line);border-radius:12px;background:#fff;padding:10px}
-    .week-head{display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;font-size:12px;font-weight:700;color:#284c77}
-    .week-head small{font-size:11px;font-weight:500;color:#6c7f95}
-    .week-scroller{overflow-x:auto;scrollbar-color:#c6d8eb transparent}
-    .week-grid{display:grid;grid-template-columns:repeat(7,minmax(98px,1fr));gap:7px;min-width:720px}
-    .day{border:1px solid #dce8f6;border-radius:9px;overflow:hidden;background:#fbfdff;min-height:115px}
-    .day-top{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:7px 8px;background:#eaf3ff;color:#18518e;font-size:11px;font-weight:700}
-    .day-date{font-size:10px;color:#6b8199;font-weight:500;padding:7px 8px 0}
-    .day-doses{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:9px 7px}
-    .dose{text-align:center}
-    .dose small{display:block;font-size:10px;color:#69829e;margin-bottom:5px}
-    .dose strong{display:block;font-weight:700;font-size:13px;white-space:nowrap}
-    .day-total{border-top:1px solid #e8f0fa;text-align:center;font-size:10px;padding:5px;color:#426184;font-weight:600;background:#f5f9ff}
-    .followup{margin-top:17px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-    .followup-title{background:var(--pale);padding:13px 14px;font-size:14px;font-weight:700}
-    .followup-explainer{font-size:11px;color:var(--muted);margin:0;padding:0 14px 12px;background:var(--pale)}
-    .table-scroll{overflow-x:auto}
-    table{border-collapse:collapse;width:100%;min-width:650px;font-size:12px}
-    th{background:#e7f1fd;color:#23527f;text-align:left;font-weight:700;white-space:nowrap}
-    th,td{padding:9px 10px;border:1px solid #e0e9f3}
-    td:first-child{white-space:nowrap;font-weight:600}
-    tbody tr:nth-child(even){background:#f8fbff}
-    .blank{display:inline-block;width:100%;height:16px;border-bottom:1px dashed #aabbd0}
-    .na{color:#b3c0ce;text-align:center}
-    .print-footer{display:none}
+    /* Tek sayfaya uygun üç paralel liste: 1–18, 19–35, haftalık takip */
+    .print-grid {display:grid;grid-template-columns:1fr 1fr 1.12fr;gap:10px;align-items:start}
+    .list-section {min-width:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+    .list-heading {display:flex;align-items:center;justify-content:space-between;gap:6px;margin:0;padding:9px 10px;background:#eaf3ff;color:#1c477a;font-size:12px;font-weight:700}
+    .list-heading small {font-size:10px;font-weight:500;color:#5f7693}
+    .table-scroll {overflow-x:auto}
+    .compact-table {table-layout:fixed;border-collapse:collapse;width:100%;min-width:0;font-size:11px;font-variant-numeric:tabular-nums}
+    .compact-table th {background:#f1f6fc;color:#285584;font-weight:700;text-align:center;white-space:nowrap}
+    .compact-table td,.compact-table th {padding:6px 3px;line-height:1.2;border:1px solid #e4ecf5;text-align:center}
+    .compact-table td:first-child {font-weight:650;color:#2d517c}
+    .compact-table tbody tr:nth-child(even){background:#f9fcff}
+    .compact-table tbody tr.week-break td {border-top:2px solid #a8c8ea}
+    .compact-table td:last-child {font-weight:700;color:#1d5eac}
+    .compact-table .date-col {white-space:nowrap}
+    .compact-table .number-col {white-space:nowrap}
+    .compact-table .lab-value {height:15px}
+    .blank {display:block;border-bottom:1px solid #a9b9cf;min-height:12px;width:92%;margin:0 auto}
+    .na{color:#b9c5d4;font-weight:400!important}
+    .followup-note {margin:8px 9px 9px;color:var(--muted);font-size:10px;line-height:1.4}
+    .print-footer {display:none}
     .privacy{margin:14px 0 0;text-align:center;color:#667b93;font-size:12px;line-height:1.45}
     [hidden]{display:none!important}
-    @media(max-width:720px){.wrap{padding:16px 10px 30px}.card{padding:15px}.form-grid{grid-template-columns:1fr}.headline{gap:10px}.logo{height:43px;width:43px}.week{padding:8px}.custom-grid{grid-template-columns:1fr 1fr}}
+    @media(max-width:900px){
+      .print-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .list-section.monitoring{grid-column:1/-1}
+    }
+    @media(max-width:720px){
+      .wrap{padding:16px 10px 30px}.card{padding:15px}.form-grid{grid-template-columns:1fr}
+      .headline{gap:10px}.logo{height:43px;width:43px}.custom-grid{grid-template-columns:1fr 1fr}
+      .print-grid{grid-template-columns:1fr}
+      .list-section.monitoring{grid-column:auto}
+      .compact-table td,.compact-table th{padding:8px 5px}
+    }
     @media(max-width:390px){.custom-grid{grid-template-columns:1fr}}
     @media print{
-      @page{size:A4 landscape;margin:10mm}
-      body{background:#fff;color:#172f4f;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-      .wrap{max-width:none;margin:0;padding:0}
+      @page {size:A4 landscape;margin:7mm}
+      html,body {background:#fff!important;color:#182b42;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      body{font-size:9pt}
+      .wrap{max-width:none;margin:0;padding:0;width:100%}
       .back,.headline,.card.inputs,.btn,.privacy,.info{display:none!important}
       .card.results-card{padding:0;border:0;box-shadow:none;margin:0}
       .results{margin:0}
-      .result-bar{margin:0 0 11px}
-      .result-heading{font-size:18px}
-      .details{font-size:11px}
-      .weeks{gap:9px}
-      .week{padding:7px;border-radius:8px;break-inside:avoid;page-break-inside:avoid}
-      .week-grid{min-width:0;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
-      .week-scroller,.table-scroll{overflow:visible}
-      .day{min-height:86px;border-radius:5px}
-      .day-top{padding:4px 5px;font-size:10px}
-      .day-date{padding:3px 5px 0;font-size:9px}
-      .day-doses{padding:5px 3px;gap:2px}
-      .dose small{font-size:9px;margin:0 0 2px}
-      .dose strong{font-size:11px}
-      .day-total{font-size:9px;padding:3px}
-      .week-head{margin:0 0 5px}
-      .followup{margin-top:0;break-before:page;page-break-before:always;border:0;overflow:visible}
-      .followup-title{padding:0 0 7px;background:#fff}
-      .followup-explainer{padding:0 0 9px;background:#fff}
-      table{font-size:10px;min-width:0}
-      th,td{padding:6px 7px}
-      .blank{height:10px}
-      .print-footer{display:flex;justify-content:space-between;align-items:flex-end;margin-top:19px;gap:12px;font-size:11px;color:#345}
-      .signature{width:200px;border-top:1px solid #aeb9c7;text-align:center;padding-top:7px}
+      .result-bar{margin:0 0 4mm;gap:0}
+      .result-heading{font-size:14pt;line-height:1.2;margin:0}
+      .details{font-size:8pt;line-height:1.3;margin-top:2mm}
+      .print-grid {grid-template-columns:1fr 1fr 1.12fr;gap:3mm;align-items:start}
+      .list-section,.list-section.monitoring{grid-column:auto;border:1px solid #cad6e4;border-radius:0;break-inside:avoid;page-break-inside:avoid}
+      .list-heading {padding:2mm 2mm 1.8mm;font-size:9pt}
+      .list-heading small {font-size:7pt}
+      .table-scroll {overflow:visible}
+      .compact-table {min-width:0;font-size:7.3pt;line-height:1.1}
+      .compact-table td,.compact-table th {height:6.25mm;padding:1mm .55mm;line-height:1.1}
+      .compact-table th{height:6.5mm}
+      .compact-table .lab-value{height:auto}
+      .compact-table .blank {min-height:3mm}
+      .followup-note{font-size:6.9pt;line-height:1.25;margin:2mm}
+      .print-footer{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:4mm;font-size:7pt;color:#516276;break-inside:avoid}
+      .print-footer p{margin:2mm 0 0}
+      .signature{width:37mm;border-top:1px solid #aeb9c7;text-align:center;padding-top:2mm;flex:none}
     }
   </style>
 </head>
@@ -130,17 +129,33 @@
           <div><h2 class="result-heading" id="standardTitle">Standart 35 günlük titrasyon</h2><div class="details" id="planDetails" aria-live="polite"></div></div>
           <button class="btn" type="button" id="printButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 15h12v6H6z"/></svg>Yazdır / PDF olarak kaydet</button>
         </div>
-        <div class="weeks" id="weeks"></div>
-        <section class="followup" aria-labelledby="followupTitle">
-          <div class="followup-title" id="followupTitle">Laboratuvar ve klinik izlem takvimi</div>
-          <p class="followup-explainer">ANC: ilk 18 hafta haftalık (birincil hematolojik takip). WBC ek kayıt alanıdır. İlk 4 hafta CRP ve troponin alanları ayrılmıştır. QTc alanı klinik gereksinime göre doldurulur. Tarihler planlanan kontrol tarihleridir.</p>
-          <div class="table-scroll">
-            <table aria-label="Klozapin izlem kayıt tablosu">
-              <thead><tr><th>Kontrol</th><th>Tarih</th><th>ANC</th><th>WBC</th><th>CRP</th><th>Troponin</th><th>QTc</th></tr></thead>
+        <div class="print-grid" aria-label="Tek sayfalık titrasyon ve takip planı">
+          <section class="list-section" aria-labelledby="daysFirstTitle">
+            <h3 class="list-heading" id="daysFirstTitle"><span>Günlük dozlar · 1–18</span><small>Doz: mg</small></h3>
+            <div class="table-scroll"><table class="compact-table" aria-label="Titrasyon gün 1 ile 18">
+              <colgroup><col style="width:10%"><col style="width:27%"><col style="width:20%"><col style="width:20%"><col style="width:23%"></colgroup>
+              <thead><tr><th>Gün</th><th>Tarih</th><th>Sabah</th><th>Akşam</th><th>Toplam</th></tr></thead>
+              <tbody id="daysOne"></tbody>
+            </table></div>
+          </section>
+          <section class="list-section" aria-labelledby="daysSecondTitle">
+            <h3 class="list-heading" id="daysSecondTitle"><span>Günlük dozlar · 19–35</span><small>Doz: mg</small></h3>
+            <div class="table-scroll"><table class="compact-table" aria-label="Titrasyon gün 19 ile 35">
+              <colgroup><col style="width:10%"><col style="width:27%"><col style="width:20%"><col style="width:20%"><col style="width:23%"></colgroup>
+              <thead><tr><th>Gün</th><th>Tarih</th><th>Sabah</th><th>Akşam</th><th>Toplam</th></tr></thead>
+              <tbody id="daysTwo"></tbody>
+            </table></div>
+          </section>
+          <section class="list-section monitoring" aria-labelledby="followupTitle">
+            <h3 class="list-heading" id="followupTitle"><span>Laboratuvar takibi</span><small>18 hafta</small></h3>
+            <div class="table-scroll"><table class="compact-table" aria-label="ANC CRP troponin ve QTc takip çizelgesi">
+              <colgroup><col style="width:17%"><col style="width:25%"><col style="width:14%"><col style="width:14%"><col style="width:16%"><col style="width:14%"></colgroup>
+              <thead><tr><th>Kontrol</th><th>Tarih</th><th>ANC</th><th>CRP</th><th>Trop.</th><th>QTc</th></tr></thead>
               <tbody id="labRows"></tbody>
-            </table>
-          </div>
-        </section>
+            </table></div>
+            <p class="followup-note">ANC: başlangıç + 18 hafta haftalık. CRP/troponin: başlangıç + ilk 4 hafta; QTc: gerekli kontrollerde kaydedilir. Sonuçlar elle doldurulur.</p>
+          </section>
+        </div>
         <div class="print-footer"><div>Plan, hekim tarafından kontrol edilerek hasta dosyasına konulmalıdır.<p>Not: ____________________________________________________</p></div><div class="signature">Hekim adı / imza</div></div>
       </div>
     </section>
@@ -156,7 +171,8 @@
       const customEl = document.getElementById('customFields');
       const standardEl = document.getElementById('standardSection');
       const detailsEl = document.getElementById('planDetails');
-      const weeksEl = document.getElementById('weeks');
+      const daysOneEl = document.getElementById('daysOne');
+      const daysTwoEl = document.getElementById('daysTwo');
       const labEl = document.getElementById('labRows');
       const customPreview = document.getElementById('customPreview');
       const everyDays = document.getElementById('everyDays');
@@ -179,50 +195,34 @@
         if(text!==undefined)el.textContent=text;
         return el;
       }
-      function makeDose(label,dose) {
-        const div=element('div','dose');
-        div.append(element('small','',label),element('strong','',dose ? fmt(dose)+' mg' : '—'));
-        return div;
-      }
       function renderStandard() {
-        weeksEl.replaceChildren();
+        daysOneEl.replaceChildren();
+        daysTwoEl.replaceChildren();
         labEl.replaceChildren();
         const start=dateEl.value;
-        detailsEl.textContent=(nameEl.value.trim()||'Hasta adı girilmedi')+' · Başlangıç: '+(start?addDays(start,0):'Tarih seçilmedi')+' · 35 gün · Hedef son doz: 450 mg/gün';
+        detailsEl.textContent=(nameEl.value.trim()||'Hasta adı girilmedi')+' · Başlangıç: '+(start?addDays(start,0):'Tarih seçilmedi')+' · Standart titrasyon · 35 gün · Son doz: 450 mg/gün';
         if(!start)return;
-        for(let w=0;w<5;w++) {
-          const week=element('section','week');
-          const head=element('div','week-head');
-          head.append(element('span','',(w+1)+'. HAFTA'),element('small','','Gün '+(w*7+1)+'–'+(w*7+7)));
-          const scroll=element('div','week-scroller'),grid=element('div','week-grid');
-          for(let d=0;d<7;d++) {
-            const ix=w*7+d,am=STANDARD[ix][0],pm=STANDARD[ix][1],total=am+pm;
-            const card=element('article','day');
-            const top=element('div','day-top');
-            top.append(element('span','',(ix+1)+'. gün'),element('span','',fmt(total)+' mg'));
-            const date=element('div','day-date',addDays(start,ix));
-            const doses=element('div','day-doses');
-            doses.append(makeDose('Sabah',am),makeDose('Akşam',pm));
-            card.append(top,date,doses,element('div','day-total','Günlük: '+fmt(total)+' mg'));
-            grid.append(card);
-          }
-          scroll.append(grid);week.append(head,scroll);weeksEl.append(week);
+        for(let ix=0;ix<STANDARD.length;ix++) {
+          const [am,pm]=STANDARD[ix];
+          const tr=element('tr',ix%7===0?'week-break':'');
+          const values=[String(ix+1),addDays(start,ix),fmt(am),fmt(pm),fmt(am+pm)];
+          values.forEach((val,k)=>tr.append(element('td',k===1?'date-col':k>=2?'number-col':'',val)));
+          (ix<18?daysOneEl:daysTwoEl).append(tr);
         }
-        const mkBlank=()=>{const s=element('span','blank');s.setAttribute('aria-label','Doldurulacak alan');return s;};
-        const addLab=(name,date,isEarly,isBaseline)=>{
-          const tr=document.createElement('tr');
-          const c0=element('td','',name),c1=element('td','',date);
-          tr.append(c0,c1);
-          for(const field of ['ANC','WBC','CRP','Troponin','QTc']){
-            const td=document.createElement('td');
-            if((field==='CRP'||field==='Troponin')&&!isEarly&&!isBaseline)td.append(element('div','na','—'));
+        const mkBlank=()=>{const el=element('span','blank');el.setAttribute('aria-label','Elle doldurulacak sonuç alanı');return el;};
+        const appendLab=(label,offset,early)=>{
+          const tr=element('tr');
+          tr.append(element('td','',label),element('td','date-col',addDays(start,offset)));
+          for(const field of ['ANC','CRP','Troponin','QTc']){
+            const td=element('td','lab-value');
+            if((field==='CRP'||field==='Troponin')&&!early) td.append(element('span','na','—'));
             else td.append(mkBlank());
             tr.append(td);
           }
           labEl.append(tr);
         };
-        addLab('Başlangıç',addDays(start,0),true,true);
-        for(let i=1;i<=18;i++)addLab(i+'. hafta',addDays(start,i*7),i<=4,false);
+        appendLab('Başl.',0,true);
+        for(let w=1;w<=18;w++)appendLab(w+'. hf',w*7,w<=4);
       }
       function renderCustom() {
         const days=Number(everyDays.value),increment=Number(increaseMg.value);
