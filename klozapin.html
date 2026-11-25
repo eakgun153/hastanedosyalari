@@ -55,7 +55,6 @@
     .blank {display:block;border-bottom:1px solid #a9b9cf;min-height:12px;width:92%;margin:0 auto}
     .na{color:#b9c5d4;font-weight:400!important}
     .followup-note {margin:8px 9px 9px;color:var(--muted);font-size:10px;line-height:1.4}
-    .print-footer {display:none}
     .privacy{margin:14px 0 0;text-align:center;color:#667b93;font-size:12px;line-height:1.45}
     [hidden]{display:none!important}
     @media(max-width:900px){
@@ -92,9 +91,6 @@
       .compact-table .lab-value{height:auto}
       .compact-table .blank {min-height:3mm}
       .followup-note{font-size:6.9pt;line-height:1.25;margin:2mm}
-      .print-footer{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:4mm;font-size:7pt;color:#516276;break-inside:avoid}
-      .print-footer p{margin:2mm 0 0}
-      .signature{width:37mm;border-top:1px solid #aeb9c7;text-align:center;padding-top:2mm;flex:none}
     }
   </style>
 </head>
@@ -126,7 +122,7 @@
     <section class="card results-card" id="standardSection" aria-labelledby="standardTitle">
       <div class="results">
         <div class="result-bar">
-          <div><h2 class="result-heading" id="standardTitle">Standart 35 günlük titrasyon</h2><div class="details" id="planDetails" aria-live="polite"></div></div>
+          <div><h2 class="result-heading" id="standardTitle">Klozapin Standart Titrasyon Şeması</h2><div class="details" id="planDetails" aria-live="polite"></div></div>
           <button class="btn" type="button" id="printButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 15h12v6H6z"/></svg>Yazdır / PDF olarak kaydet</button>
         </div>
         <div class="print-grid" aria-label="Tek sayfalık titrasyon ve takip planı">
@@ -156,7 +152,6 @@
             <p class="followup-note">ANC: başlangıç + 18 hafta haftalık. CRP/troponin: başlangıç + ilk 4 hafta; QTc: gerekli kontrollerde kaydedilir. Sonuçlar elle doldurulur.</p>
           </section>
         </div>
-        <div class="print-footer"><div>Plan, hekim tarafından kontrol edilerek hasta dosyasına konulmalıdır.<p>Not: ____________________________________________________</p></div><div class="signature">Hekim adı / imza</div></div>
       </div>
     </section>
     <p class="privacy">Hasta adı ve seçilen tarihler bu sayfada saklanmaz; bilgiler üçüncü taraflara gönderilmez. PDF için tarayıcının yazdır ekranında “PDF olarak kaydet” seçilir.</p>
