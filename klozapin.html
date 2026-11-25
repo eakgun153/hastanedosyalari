@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Klozapin Titrasyon Planlayıcısı | Hastane Dokümanları</title>
+  <style>
+    :root {color-scheme:light;--ink:#173252;--muted:#5e728c;--line:#dce7f4;--blue:#176add;--pale:#f3f8ff;--white:#fff;}
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(145deg,#e5f4ff,#f5faff 60%,#e9f4ff);color:var(--ink);font-family:"Aptos","Segoe UI Variable Text","Segoe UI",Arial,sans-serif;font-size:14px}
+    .wrap{max-width:1180px;margin:0 auto;padding:24px 22px 44px}
+    .back{display:inline-flex;gap:7px;align-items:center;color:#245b9e;text-decoration:none;font-weight:600;font-size:13px;margin-bottom:16px}
+    .back:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #79adf0;outline-offset:2px}
+    .headline{display:flex;align-items:flex-start;gap:13px;margin-bottom:16px}
+    .logo{flex:none;display:grid;place-items:center;width:48px;height:48px;border-radius:15px;background:#e2f0ff;color:#1162c4}
+    .logo svg{width:27px;height:27px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    h1{font-size:clamp(22px,3vw,29px);letter-spacing:-.035em;margin:0 0 4px;font-weight:700}
+    .sub{color:var(--muted);line-height:1.45;margin:0}
+    .card{background:var(--white);border:1px solid var(--line);border-radius:17px;padding:20px;box-shadow:0 8px 30px rgba(29,75,128,.07);margin-bottom:14px}
+    .section-title{margin:0 0 15px;font-size:16px;font-weight:700;letter-spacing:-.01em}
+    .form-grid{display:grid;grid-template-columns:minmax(190px,2fr) minmax(160px,1fr) minmax(180px,1.2fr);gap:13px}
+    .field{display:flex;flex-direction:column;gap:7px;min-width:0}
+    label{font-size:12px;font-weight:650;color:#37516e}
+    input,select{width:100%;min-height:43px;border-radius:9px;border:1px solid #c8d8ea;background:white;color:#172f4f;font:500 14px inherit;padding:9px 11px;font-family:inherit;font-size:14px}
+    input::placeholder{color:#93a0b0}
+    .custom-fields{margin-top:14px;padding:14px;border:1px solid #d6e8ff;background:#f7fbff;border-radius:11px}
+    .custom-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+    .subnote{font-size:12px;line-height:1.5;color:#63758a;margin:12px 0 0}
+    .custom-preview{font-weight:650;margin-top:12px;color:#245b9e}
+    .info{margin-top:14px;background:#f7fbff;border-left:3px solid #74a8e8;border-radius:8px;padding:10px 12px;font-size:12px;color:#395c83;line-height:1.5}
+    .results{margin-top:18px}
+    .result-bar{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:13px}
+    .result-heading{margin:0;font-size:18px;letter-spacing:-.02em}
+    .details{color:var(--muted);font-size:12px;margin-top:5px}
+    .btn{border:1px solid #2168c6;border-radius:10px;background:#176add;padding:10px 16px;color:white;font-size:13px;font-weight:650;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+    .btn:hover{background:#105abd}
+    .btn svg{width:17px;height:17px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+    .weeks{display:grid;gap:12px}
+    .week{border:1px solid var(--line);border-radius:12px;background:#fff;padding:10px}
+    .week-head{display:flex;justify-content:space-between;align-items:center;margin:0 0 8px;font-size:12px;font-weight:700;color:#284c77}
+    .week-head small{font-size:11px;font-weight:500;color:#6c7f95}
+    .week-scroller{overflow-x:auto;scrollbar-color:#c6d8eb transparent}
+    .week-grid{display:grid;grid-template-columns:repeat(7,minmax(98px,1fr));gap:7px;min-width:720px}
+    .day{border:1px solid #dce8f6;border-radius:9px;overflow:hidden;background:#fbfdff;min-height:115px}
+    .day-top{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:7px 8px;background:#eaf3ff;color:#18518e;font-size:11px;font-weight:700}
+    .day-date{font-size:10px;color:#6b8199;font-weight:500;padding:7px 8px 0}
+    .day-doses{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:9px 7px}
+    .dose{text-align:center}
+    .dose small{display:block;font-size:10px;color:#69829e;margin-bottom:5px}
+    .dose strong{display:block;font-weight:700;font-size:13px;white-space:nowrap}
+    .day-total{border-top:1px solid #e8f0fa;text-align:center;font-size:10px;padding:5px;color:#426184;font-weight:600;background:#f5f9ff}
+    .followup{margin-top:17px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+    .followup-title{background:var(--pale);padding:13px 14px;font-size:14px;font-weight:700}
+    .followup-explainer{font-size:11px;color:var(--muted);margin:0;padding:0 14px 12px;background:var(--pale)}
+    .table-scroll{overflow-x:auto}
+    table{border-collapse:collapse;width:100%;min-width:650px;font-size:12px}
+    th{background:#e7f1fd;color:#23527f;text-align:left;font-weight:700;white-space:nowrap}
+    th,td{padding:9px 10px;border:1px solid #e0e9f3}
+    td:first-child{white-space:nowrap;font-weight:600}
+    tbody tr:nth-child(even){background:#f8fbff}
+    .blank{display:inline-block;width:100%;height:16px;border-bottom:1px dashed #aabbd0}
+    .na{color:#b3c0ce;text-align:center}
+    .print-footer{display:none}
+    .privacy{margin:14px 0 0;text-align:center;color:#667b93;font-size:12px;line-height:1.45}
+    [hidden]{display:none!important}
+    @media(max-width:720px){.wrap{padding:16px 10px 30px}.card{padding:15px}.form-grid{grid-template-columns:1fr}.headline{gap:10px}.logo{height:43px;width:43px}.week{padding:8px}.custom-grid{grid-template-columns:1fr 1fr}}
+    @media(max-width:390px){.custom-grid{grid-template-columns:1fr}}
+    @media print{
+      @page{size:A4 landscape;margin:10mm}
+      body{background:#fff;color:#172f4f;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .wrap{max-width:none;margin:0;padding:0}
+      .back,.headline,.card.inputs,.btn,.privacy,.info{display:none!important}
+      .card.results-card{padding:0;border:0;box-shadow:none;margin:0}
+      .results{margin:0}
+      .result-bar{margin:0 0 11px}
+      .result-heading{font-size:18px}
+      .details{font-size:11px}
+      .weeks{gap:9px}
+      .week{padding:7px;border-radius:8px;break-inside:avoid;page-break-inside:avoid}
+      .week-grid{min-width:0;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+      .week-scroller,.table-scroll{overflow:visible}
+      .day{min-height:86px;border-radius:5px}
+      .day-top{padding:4px 5px;font-size:10px}
+      .day-date{padding:3px 5px 0;font-size:9px}
+      .day-doses{padding:5px 3px;gap:2px}
+      .dose small{font-size:9px;margin:0 0 2px}
+      .dose strong{font-size:11px}
+      .day-total{font-size:9px;padding:3px}
+      .week-head{margin:0 0 5px}
+      .followup{margin-top:0;break-before:page;page-break-before:always;border:0;overflow:visible}
+      .followup-title{padding:0 0 7px;background:#fff}
+      .followup-explainer{padding:0 0 9px;background:#fff}
+      table{font-size:10px;min-width:0}
+      th,td{padding:6px 7px}
+      .blank{height:10px}
+      .print-footer{display:flex;justify-content:space-between;align-items:flex-end;margin-top:19px;gap:12px;font-size:11px;color:#345}
+      .signature{width:200px;border-top:1px solid #aeb9c7;text-align:center;padding-top:7px}
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <a class="back" href="./index.html">← Hastane Dokümanları</a>
+    <header class="headline">
+      <div class="logo"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 9h8M8 13h2m4 0h2m-8 4h2m4 0h2"/></svg></div>
+      <div><h1>Klozapin Titrasyon Planlayıcısı</h1><p class="sub">Tarihli doz çizelgesi ve ANC ağırlıklı takip formu • Tarayıcı içinde, kayıt tutmadan.</p></div>
+    </header>
+    <section class="card inputs" aria-labelledby="patient-form-title">
+      <h2 id="patient-form-title" class="section-title">Hasta ve titrasyon bilgileri</h2>
+      <div class="form-grid">
+        <div class="field"><label for="patientName">Hasta adı soyadı</label><input id="patientName" type="text" maxlength="120" autocomplete="off" placeholder="Ad Soyad"></div>
+        <div class="field"><label for="startDate">Başlangıç tarihi</label><input id="startDate" type="date" required></div>
+        <div class="field"><label for="titrationType">Titrasyon tipi</label><select id="titrationType"><option value="standard">Standart titrasyon</option><option value="custom">Özelleştirilmiş titrasyon</option></select></div>
+      </div>
+      <div class="custom-fields" id="customFields" hidden>
+        <h3 class="section-title" style="margin-bottom:10px">Özelleştirilmiş titrasyon</h3>
+        <div class="custom-grid">
+          <div class="field"><label for="everyDays">Kaç günde bir artış?</label><input id="everyDays" type="number" min="1" max="30" step="1" value="2" inputmode="numeric"></div>
+          <div class="field"><label for="increaseMg">Her artış kaç mg?</label><input id="increaseMg" type="number" min="0.5" max="100" step="0.5" value="25" inputmode="decimal"></div>
+        </div>
+        <p class="custom-preview" id="customPreview" aria-live="polite"></p>
+        <p class="subnote">Özelleştirilmiş şemanın başlangıç dozu, hedef doz ve sabah/akşam dağıtımı henüz kararlaştırılmadığı için bu sürümde otomatik doz çizelgesi ve PDF oluşturulmaz. Şimdilik yalnızca artış aralığı ve miktarı girilebilir.</p>
+      </div>
+      <p class="info">Standart plan, paylaşılan Clonex örnek dozlama tablosundaki 35 günlük şemanın aktarımıdır; her hastaya otomatik uygulanacak bir reçete değildir. Başlangıç değerlendirmesi, ANC sonuçları, kardiyak izlem ve titrasyonun klinik uygunluğu hekim tarafından doğrulanmalıdır. Tedaviye ara verilmişse eski titrasyona kendiliğinden devam edilmemelidir.</p>
+    </section>
+    <section class="card results-card" id="standardSection" aria-labelledby="standardTitle">
+      <div class="results">
+        <div class="result-bar">
+          <div><h2 class="result-heading" id="standardTitle">Standart 35 günlük titrasyon</h2><div class="details" id="planDetails" aria-live="polite"></div></div>
+          <button class="btn" type="button" id="printButton"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 15h12v6H6z"/></svg>Yazdır / PDF olarak kaydet</button>
+        </div>
+        <div class="weeks" id="weeks"></div>
+        <section class="followup" aria-labelledby="followupTitle">
+          <div class="followup-title" id="followupTitle">Laboratuvar ve klinik izlem takvimi</div>
+          <p class="followup-explainer">ANC: ilk 18 hafta haftalık (birincil hematolojik takip). WBC ek kayıt alanıdır. İlk 4 hafta CRP ve troponin alanları ayrılmıştır. QTc alanı klinik gereksinime göre doldurulur. Tarihler planlanan kontrol tarihleridir.</p>
+          <div class="table-scroll">
+            <table aria-label="Klozapin izlem kayıt tablosu">
+              <thead><tr><th>Kontrol</th><th>Tarih</th><th>ANC</th><th>WBC</th><th>CRP</th><th>Troponin</th><th>QTc</th></tr></thead>
+              <tbody id="labRows"></tbody>
+            </table>
+          </div>
+        </section>
+        <div class="print-footer"><div>Plan, hekim tarafından kontrol edilerek hasta dosyasına konulmalıdır.<p>Not: ____________________________________________________</p></div><div class="signature">Hekim adı / imza</div></div>
+      </div>
+    </section>
+    <p class="privacy">Hasta adı ve seçilen tarihler bu sayfada saklanmaz; bilgiler üçüncü taraflara gönderilmez. PDF için tarayıcının yazdır ekranında “PDF olarak kaydet” seçilir.</p>
+  </main>
+  <script>
+    (() => {
+      'use strict';
+      const STANDARD = [[12.5,0],[25,0],[25,25],[25,25],[25,50],[25,50],[50,50],[50,50],[50,75],[75,75],[75,75],[75,100],[75,100],[100,100],[100,100],[100,100],[100,150],[100,150],[100,150],[100,200],[100,200],[100,200],[150,200],[150,200],[150,200],[150,200],[200,200],[200,200],[200,200],[200,200],[200,200],[200,250],[200,250],[200,250],[200,250]];
+      const nameEl = document.getElementById('patientName');
+      const dateEl = document.getElementById('startDate');
+      const typeEl = document.getElementById('titrationType');
+      const customEl = document.getElementById('customFields');
+      const standardEl = document.getElementById('standardSection');
+      const detailsEl = document.getElementById('planDetails');
+      const weeksEl = document.getElementById('weeks');
+      const labEl = document.getElementById('labRows');
+      const customPreview = document.getElementById('customPreview');
+      const everyDays = document.getElementById('everyDays');
+      const increaseMg = document.getElementById('increaseMg');
+      const printButton = document.getElementById('printButton');
+      const fmt = number => number.toLocaleString('tr-TR',{maximumFractionDigits:1});
+      function localISO(date) {
+        const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,'0'),d=String(date.getDate()).padStart(2,'0');
+        return y+'-'+m+'-'+d;
+      }
+      function addDays(iso,days) {
+        const parts=iso.split('-').map(Number);
+        if(parts.length!==3||parts.some(x=>!Number.isFinite(x)))return '';
+        const date=new Date(Date.UTC(parts[0],parts[1]-1,parts[2]+days));
+        return new Intl.DateTimeFormat('tr-TR',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'UTC'}).format(date);
+      }
+      function element(tag,className,text) {
+        const el=document.createElement(tag);
+        if(className)el.className=className;
+        if(text!==undefined)el.textContent=text;
+        return el;
+      }
+      function makeDose(label,dose) {
+        const div=element('div','dose');
+        div.append(element('small','',label),element('strong','',dose ? fmt(dose)+' mg' : '—'));
+        return div;
+      }
+      function renderStandard() {
+        weeksEl.replaceChildren();
+        labEl.replaceChildren();
+        const start=dateEl.value;
+        detailsEl.textContent=(nameEl.value.trim()||'Hasta adı girilmedi')+' · Başlangıç: '+(start?addDays(start,0):'Tarih seçilmedi')+' · 35 gün · Hedef son doz: 450 mg/gün';
+        if(!start)return;
+        for(let w=0;w<5;w++) {
+          const week=element('section','week');
+          const head=element('div','week-head');
+          head.append(element('span','',(w+1)+'. HAFTA'),element('small','','Gün '+(w*7+1)+'–'+(w*7+7)));
+          const scroll=element('div','week-scroller'),grid=element('div','week-grid');
+          for(let d=0;d<7;d++) {
+            const ix=w*7+d,am=STANDARD[ix][0],pm=STANDARD[ix][1],total=am+pm;
+            const card=element('article','day');
+            const top=element('div','day-top');
+            top.append(element('span','',(ix+1)+'. gün'),element('span','',fmt(total)+' mg'));
+            const date=element('div','day-date',addDays(start,ix));
+            const doses=element('div','day-doses');
+            doses.append(makeDose('Sabah',am),makeDose('Akşam',pm));
+            card.append(top,date,doses,element('div','day-total','Günlük: '+fmt(total)+' mg'));
+            grid.append(card);
+          }
+          scroll.append(grid);week.append(head,scroll);weeksEl.append(week);
+        }
+        const mkBlank=()=>{const s=element('span','blank');s.setAttribute('aria-label','Doldurulacak alan');return s;};
+        const addLab=(name,date,isEarly,isBaseline)=>{
+          const tr=document.createElement('tr');
+          const c0=element('td','',name),c1=element('td','',date);
+          tr.append(c0,c1);
+          for(const field of ['ANC','WBC','CRP','Troponin','QTc']){
+            const td=document.createElement('td');
+            if((field==='CRP'||field==='Troponin')&&!isEarly&&!isBaseline)td.append(element('div','na','—'));
+            else td.append(mkBlank());
+            tr.append(td);
+          }
+          labEl.append(tr);
+        };
+        addLab('Başlangıç',addDays(start,0),true,true);
+        for(let i=1;i<=18;i++)addLab(i+'. hafta',addDays(start,i*7),i<=4,false);
+      }
+      function renderCustom() {
+        const days=Number(everyDays.value),increment=Number(increaseMg.value);
+        if(!Number.isInteger(days)||days<1||days>30||!Number.isFinite(increment)||increment<=0||increment>100){
+          customPreview.textContent='Geçerli bir gün aralığı ve doz artışı girilmelidir.';
+          return;
+        }
+        customPreview.textContent='Artış kuralı: Her '+days+' günde bir +'+fmt(increment)+' mg/gün';
+      }
+      function changeMode() {
+        const custom=typeEl.value==='custom';
+        customEl.hidden=!custom;
+        standardEl.hidden=custom;
+        if(custom)renderCustom();else renderStandard();
+      }
+      typeEl.addEventListener('change',changeMode);
+      nameEl.addEventListener('input',renderStandard);
+      dateEl.addEventListener('change',renderStandard);
+      everyDays.addEventListener('input',renderCustom);
+      increaseMg.addEventListener('input',renderCustom);
+      printButton.addEventListener('click',()=>{
+        if(typeEl.value!=='standard')return;
+        if(!nameEl.value.trim()){nameEl.focus();window.alert('PDF oluşturmak için hasta adı soyadı giriniz.');return;}
+        if(!dateEl.value){dateEl.focus();window.alert('Başlangıç tarihi giriniz.');return;}
+        renderStandard();
+        window.print();
+      });
+      dateEl.value=localISO(new Date());
+      changeMode();
+    })();
+  </script>
+</body>
+</html>
