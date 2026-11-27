@@ -1684,7 +1684,7 @@ tedavi gerekmez grubuna alındı.`;
             const eskiMesajBaslangic = Date.now();
             while (mesajVar() && Date.now() - eskiMesajBaslangic < 7000) await bekle(100);
             if (mesajVar()) throw new Error("Önceki kayıt başarı mesajı kaybolmadı; yeni kayıt gönderilmedi.");
-            const kaydet = tekilGorunur("a.x-btn", el => /^Kaydet(?:\\s*\\[F6\\])?$/.test(el.innerText.trim()), "Kaydet");
+            const kaydet = tekilGorunur("a.x-btn", el => /^Kaydet(?:\s*\[F6\])?$/.test(el.innerText.trim()), "Kaydet");
             abortKontrol();
             kaydetTiklandi = true;
             kaydet.click();
