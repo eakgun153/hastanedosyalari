@@ -1118,7 +1118,7 @@ tedavi gerekmez grubuna alındı.`;
         fonetAmatemDisIstem: "dış merkez\ntetkik istendi",
         fonetAmatemSavcilikTalimat: "TC İSTANBUL ANADOLU CUMHURİYET BAŞSAVCILIĞI TALİMAT BÜROSU\u0027NDAN YAZI İLE GELEN ŞAHIS\nTETKİK İSTENDİ",
         fonetAmatemSavcilikUyusturucu: "TC İSTANBUL ANADOLU CUMHURİYET BAŞSAVCILIĞI UYUŞTURUCU MADDE BULUNDURMA SATIN ALMA VE KULLANMA SUÇLARI BÜROSU\u0027NDAN YAZI İLE GELEN ŞAHIS\nTETKİK İSTENDİ",
-        fonetAmatemSavcilikCocuk: "TC İSTANBUL ANADOLU CUMHURİYET BAŞSAVCILIĞI ÇOCUK BÜROSU'NDAN YAZI İLE GELEN ŞAHIS — TETKİK İSTENDİ"
+        fonetAmatemSavcilikCocuk: "TC İSTANBUL ANADOLU CUMHURİYET BAŞSAVCILIĞI ÇOCUK BÜROSU'NDAN YAZI İLE GELEN ŞAHIS, TETKİK İSTENDİ"
     };
     amatemDurum.textContent = amatemHazirMetni;
     const amatemIdrarSatiri = document.createElement("div");
