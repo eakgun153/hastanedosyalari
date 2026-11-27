@@ -1,0 +1,2910 @@
+(function () {
+    // DS KAYDI BEKLENİRKEN PANELİ YENİDEN KURMA; DEVAM EDEN İZLEYİCİYİ KORU
+    if (window.fonetDSKayitBekleniyor) {
+        alert(
+            "Denetimli Serbestlik Hasta Kartı kaydı hâlâ bekleniyor. " +
+            "Kaydet işleminden sonra otomasyonun tamamlanmasını bekle; " +
+            "bu sırada panel kodunu yeniden çalıştırma."
+        );
+        return;
+    }
+
+    // ÖNCEKİ PANEL VE İDRAR KARAR PANELİNİ TEMİZLE
+    document.querySelector("#fonetMakroPanel")?.remove();
+    document.querySelector("#fonetIdrarKararPanel")?.remove();
+    document.querySelector("#fonetAmatemPanel")?.remove();
+
+    if (window.fonetF8Handler) {
+        document.removeEventListener("keydown", window.fonetF8Handler);
+    }
+
+    // ABORT MISSION: tüm asenkron akışlar bekleme noktalarında iptal isteğini kontrol eder.
+    window.fonetAbortRequested = false;
+
+    function abortKontrol() {
+        if (window.fonetAbortRequested) {
+            const hata = new Error("ABORT MISSION: Kullanıcı otomasyonu durdurdu.");
+            hata.name = "AbortError";
+            throw hata;
+        }
+    }
+
+    const bekle = async ms => {
+        await new Promise(r => setTimeout(r, ms));
+        abortKontrol();
+    };
+
+    // İDRAR SENARYOLARI, Standart Giriş tamamlanıp Hasta Geçmişi açılmadan çalıştırılamaz.
+    window.fonetStandartGirisTamamlandi = false;
+    // 2/3 veya 3/3 aşamasında Hasta Geçmişi önceden kapatılırsa sonraki ortak akış tekrar kapatmaya çalışmasın.
+    window.fonetHastaGecmisiKapatildi = false;
+
+    // PANEL — V36 KOMPAKT: yalnızca görsel ölçüler daraltıldı; işlem akışları korunur.
+    const panel = document.createElement("div");
+    panel.id = "fonetMakroPanel";
+
+    panel.style.cssText = `
+        position: fixed;
+        bottom: 12px;
+        right: 12px;
+        z-index: 999999;
+        background: #263238;
+        padding: 7px;
+        border-radius: 7px;
+        box-shadow: 0 3px 12px rgba(0,0,0,.35);
+        font-family: Arial, sans-serif;
+        width: 164px;
+    `;
+
+    // Ana panel içeriği; kenardaki daraltma düğmesi bu alanı gizleyip gösterecek.
+    const panelContent = document.createElement("div");
+    panelContent.id = "fonetPanelContent";
+    panelContent.style.cssText = "width:100%; box-sizing:border-box; max-height:calc(100vh - 38px); overflow-y:auto; overflow-x:hidden; scrollbar-width:thin;";
+
+    let panelDaraltildi = false;
+    let panelOncekiGenislik = 164; // padding hariç içerik genişliği
+    let idrarPanelDaraltmaOncesiAcikti = false;
+    let amatemPanelDaraltmaOncesiAcikti = false;
+
+    // V33 - TRUSTED TYPES UYUMLU İNFOGRAFİK SİMGELERİ
+    // Fonet sayfası TrustedHTML gerektirdiğinden innerHTML / string tabanlı SVG yok.
+    // Her simge doğrudan createElementNS ile güvenli SVG düğümleri olarak oluşturulur.
+    // V35 ile aynı SVG şekilleri ve işlevler; V36'da yalnızca ekran boyutu küçültülür.
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+
+    const sekil = (tur, ozellikler) => ({ tur, ozellikler });
+    const tupSekilleri = adet => {
+        const adim = 32 / adet;
+        const w = Math.min(8, adim - 1.7);
+        return Array.from({ length: adet }, (_, i) => {
+            const x = 2 + i * adim + (adim - w) / 2;
+            const y = 7;
+            return [
+                sekil('path', { d: `M${x.toFixed(1)} ${y} v17 a${(w / 2).toFixed(1)} ${(w / 2).toFixed(1)} 0 0 0 ${w.toFixed(1)} 0 v-17` }),
+                sekil('path', { d: `M${(x - 0.5).toFixed(1)} ${y} h${(w + 1).toFixed(1)}` }),
+                sekil('path', { d: `M${(x + 1.0).toFixed(1)} 19 h${(w - 2).toFixed(1)}`, 'stroke-width': 3, opacity: '.75' })
+            ];
+        }).flat();
+    };
+
+    const panelButonIkonlari = {
+        fonetStandartGiris: [
+            sekil('rect', { x: 3.5, y: 4.5, width: 29, height: 23, rx: 3 }),
+            sekil('circle', { cx: 18, cy: 12.5, r: 3.5 }),
+            sekil('path', { d: 'M10.5 23c.8-4.4 4.1-6.5 7.5-6.5s6.7 2.1 7.5 6.5M13 32h10M18 27.5V32' })
+        ],
+        fonetUcLuGrup: tupSekilleri(3),
+        fonetAltiLiGrup: tupSekilleri(6),
+        fonetIlkBasvuru: [
+            sekil('rect', { x: 7, y: 7, width: 22, height: 26, rx: 3 }),
+            sekil('path', { d: 'M13 7V5h10v2M13 14h10M13 19h10M13 24h7' })
+        ],
+        fonetKontrolAmacliSevk: [
+            sekil('path', { d: 'M5 12h25l-6-5M30 12l-6 5M31 24H6l6-5M6 24l6 5' })
+        ],
+        fonetCezaeviDS: [
+            sekil('path', { d: 'M7 3h22v30H7zM12 4v28M18 4v28M24 4v28M7 11h22M7 25h22' })
+        ],
+        fonetMakroCalistir: [
+            // V34: Dişli ve merkez yuvarlağı aynı (18,18) merkezinden hesaplanır.
+            // Önceki sürümde yalnızca dişlinin transform alması yuvarlağı kaydırıyordu.
+            sekil('polygon', {
+                points: Array.from({ length: 8 }, (_, i) => {
+                    const yaricaplar = [11.7, 11.7, 15.2, 15.2, 11.7, 11.7];
+                    const acilar = [-22.5, -15, -15, 15, 15, 22.5];
+                    return acilar.map((aci, j) => {
+                        const radyan = (i * 45 + aci - 90) * Math.PI / 180;
+                        return [
+                            (18 + yaricaplar[j] * Math.cos(radyan)).toFixed(2),
+                            (18 + yaricaplar[j] * Math.sin(radyan)).toFixed(2)
+                        ].join(',');
+                    }).join(' ');
+                }).join(' ')
+            }),
+            sekil('circle', { cx: 18, cy: 18, r: 5 })
+        ],
+        fonetAmatem: [
+            sekil('rect', { x: 4, y: 7, width: 28, height: 25, rx: 4 }),
+            sekil('path', { d: 'M12 7V4h12v3M18 13v13M11.5 19.5h13' })
+        ],
+        fonetAbortMission: [
+            sekil('rect', { x: 5, y: 5, width: 26, height: 26, rx: 7 }),
+            sekil('path', { d: 'M13 13h10v10H13z', fill: 'currentColor', stroke: 'none' })
+        ]
+    };
+
+    function ikonSvgOlustur(butonId) {
+        const elemanlar = panelButonIkonlari[butonId];
+        if (!elemanlar) return null;
+
+        const svg = document.createElementNS(SVG_NS, 'svg');
+        const nitelikler = {
+            width: 22, height: 22, viewBox: '0 0 36 36',
+            fill: 'none', stroke: 'currentColor',
+            'stroke-width': 2.1, 'stroke-linecap': 'round',
+            'stroke-linejoin': 'round', 'aria-hidden': 'true', focusable: 'false'
+        };
+        Object.entries(nitelikler).forEach(([ad, deger]) => svg.setAttribute(ad, String(deger)));
+
+        elemanlar.forEach(({ tur, ozellikler }) => {
+            const eleman = document.createElementNS(SVG_NS, tur);
+            Object.entries(ozellikler).forEach(([ad, deger]) =>
+                eleman.setAttribute(ad, String(deger))
+            );
+            svg.appendChild(eleman);
+        });
+        return svg;
+    }
+
+    function butonaSimgeEkle(b, yazi) {
+        const ikonAlani = document.createElement('span');
+        ikonAlani.setAttribute('aria-hidden', 'true');
+        ikonAlani.style.cssText =
+            'display:inline-flex; flex:0 0 24px; width:24px; height:24px;' +
+            'align-items:center; justify-content:center; line-height:0; color:#fff;';
+        const svg = ikonSvgOlustur(b.id);
+        if (svg) ikonAlani.appendChild(svg);
+
+        const yaziAlani = document.createElement('span');
+        yaziAlani.textContent = yazi;
+        yaziAlani.style.cssText = 'flex:1 1 auto; min-width:0; text-align:left;';
+
+        b.textContent = '';
+        b.appendChild(ikonAlani);
+        b.appendChild(yaziAlani);
+        b.setAttribute('aria-label', yazi);
+        b.style.display = 'flex';
+        b.style.alignItems = 'center';
+        b.style.justifyContent = 'flex-start';
+        b.style.gap = '5px';
+        b.style.minHeight = '33px';
+        b.style.textAlign = 'left';
+    }
+
+    function butonOlustur(id, yazi, renk) {
+        const b = document.createElement("button");
+        b.id = id;
+        b.type = 'button';
+        b.style.cssText = `
+            box-sizing: border-box;
+            width: 100%;
+            padding: 4px 6px;
+            margin-bottom: 3px;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.16;
+            background: ${renk};
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        `;
+        butonaSimgeEkle(b, yazi);
+        return b;
+    }
+
+    const standartButon = butonOlustur(
+        "fonetStandartGiris",
+        "Standart Giriş",
+        "#1769aa"
+    );
+
+    const ilkBasvuruButon = butonOlustur(
+        "fonetIlkBasvuru",
+        "İlk Başvuru",
+        "#7952a3"
+    );
+
+    const cezaeviDsButon = butonOlustur(
+        "fonetCezaeviDS",
+        "Cezaevi DS",
+        "#8b5e34"
+    );
+
+    const kontrolSevkButon = butonOlustur(
+        "fonetKontrolAmacliSevk",
+        "Kontrol Amaçlı Sevk",
+        "#a65b32"
+    );
+
+    const makroButon = butonOlustur(
+        "fonetMakroCalistir",
+        "702730 Makro Ekle",
+        "#16834a"
+    );
+
+    const idrarBaslik = document.createElement("div");
+    idrarBaslik.textContent = "İdrar Senaryoları";
+    idrarBaslik.style.cssText = `
+        color: #cfd8dc;
+        font-size: 11px;
+        font-weight: bold;
+        margin: 4px 0 4px;
+        padding-top: 4px;
+        border-top: 1px solid rgba(255,255,255,.2);
+        text-align: left;
+    `;
+
+    const ucGrupButon = butonOlustur(
+        "fonetUcLuGrup",
+        "3 lü grup",
+        "#087f8c"
+    );
+
+    const altiGrupButon = butonOlustur(
+        "fonetAltiLiGrup",
+        "6 lı grup",
+        "#536d8a"
+    );
+
+    const amatemButon = butonOlustur("fonetAmatem", "AMATEM", "#455a9c");
+    amatemButon.style.marginTop = "4px";
+    amatemButon.setAttribute("aria-controls", "fonetAmatemPanel");
+    amatemButon.setAttribute("aria-expanded", "false");
+
+    const durum = document.createElement("div");
+    durum.style.cssText = `
+        color: white;
+        font-size: 11px;
+        line-height: 1.2;
+        margin-top: 2px;
+        text-align: center;
+        overflow-wrap: anywhere;
+    `;
+    durum.textContent = "Hazır";
+
+    const abortMissionButon = document.createElement("button");
+    abortMissionButon.id = "fonetAbortMission";
+    abortMissionButon.type = "button";
+    abortMissionButon.textContent = "DURDUR";
+    abortMissionButon.title = "Devam eden otomasyonu durdur. Gönderilmiş kayıt veya makroyu geri almaz.";
+    abortMissionButon.style.cssText = `
+        box-sizing: border-box;
+        width: 100%;
+        padding: 4px 6px;
+        margin: 4px 0 0;
+        border: 1px solid #ff8a80;
+        border-radius: 4px;
+        background: linear-gradient(180deg, #c62828, #8e1616);
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: .5px;
+        position: sticky;
+        bottom: 0;
+        z-index: 4;
+        cursor: pointer;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 2px 5px rgba(0,0,0,.25);
+    `;
+
+    // ABORT MISSION da diğer ana butonlarla aynı simge ölçüsünü kullanır.
+    butonaSimgeEkle(abortMissionButon, "DURDUR");
+    // Abort renkleri, erişilebilirliği ve davranışı aynen korunur.
+
+    panelContent.appendChild(standartButon);
+    panelContent.appendChild(ilkBasvuruButon);
+    panelContent.appendChild(cezaeviDsButon);
+    panelContent.appendChild(kontrolSevkButon);
+    panelContent.appendChild(makroButon);
+    panelContent.appendChild(idrarBaslik);
+    panelContent.appendChild(ucGrupButon);
+    panelContent.appendChild(altiGrupButon);
+    panelContent.appendChild(amatemButon);
+    panelContent.appendChild(durum);
+    panelContent.appendChild(abortMissionButon);
+    panel.appendChild(panelContent);
+
+    // Sol kenardaki küçük düğme ana paneli daraltır / yeniden açar.
+    const panelKenarDugmesi = document.createElement("button");
+    panelKenarDugmesi.type = "button";
+    panelKenarDugmesi.textContent = "‹";
+    panelKenarDugmesi.title = "Paneli daralt";
+    panelKenarDugmesi.setAttribute("aria-label", "Paneli daralt");
+    panelKenarDugmesi.setAttribute("aria-expanded", "true");
+    panelKenarDugmesi.style.cssText = `
+        position: absolute;
+        left: -16px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 21px;
+        height: 38px;
+        padding: 0;
+        border: 1px solid rgba(255,255,255,.28);
+        border-right: 0;
+        border-radius: 7px 0 0 7px;
+        background: #455a64;
+        color: #ffffff;
+        font-size: 20px;
+        font-weight: bold;
+        line-height: 1;
+        cursor: pointer;
+        z-index: 3;
+        box-shadow: 0 2px 7px rgba(0,0,0,.25);
+    `;
+
+    // Sol kenardaki ince şeridi sürükleyerek panel genişliği ayarlanabilir.
+    const panelBoyutlandirmaKenar = document.createElement("div");
+    panelBoyutlandirmaKenar.title = "Panel genişliğini sol kenardan sürükleyerek ayarla";
+    panelBoyutlandirmaKenar.setAttribute("aria-label", "Panel genişliğini ayarla");
+    panelBoyutlandirmaKenar.style.cssText = `
+        position: absolute;
+        left: -3px;
+        top: 8px;
+        bottom: 8px;
+        width: 6px;
+        background: linear-gradient(to bottom, transparent, rgba(255,255,255,.28), transparent);
+        cursor: ew-resize;
+        z-index: 2;
+        touch-action: none;
+    `;
+
+    panel.appendChild(panelBoyutlandirmaKenar);
+    panel.appendChild(panelKenarDugmesi);
+    document.body.appendChild(panel);
+
+    // 3'LÜ GRUP İÇİN İKİ AŞAMALI YAN PANEL
+    const idrarPanel = document.createElement("div");
+    idrarPanel.id = "fonetIdrarKararPanel";
+    idrarPanel.style.cssText = `
+        position: fixed;
+        display: none;
+        right: 205px;
+        bottom: 12px;
+        z-index: 1000000;
+        width: 258px;
+        max-width: calc(100vw - 24px);
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+        scrollbar-width: thin;
+        box-sizing: border-box;
+        padding: 9px;
+        background: #263238;
+        color: white;
+        border: 1px solid rgba(255,255,255,.18);
+        border-radius: 8px;
+        box-shadow: 0 3px 14px rgba(0,0,0,.4);
+        font-family: Arial, sans-serif;
+    `;
+
+    const idrarPanelUst = document.createElement("div");
+    idrarPanelUst.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 7px;
+        margin-bottom: 6px;
+    `;
+
+    const idrarPanelBaslik = document.createElement("div");
+    idrarPanelBaslik.textContent = "3 lü grup";
+    idrarPanelBaslik.style.cssText = "font-size: 13px; font-weight: bold;";
+
+    const idrarPanelKapat = document.createElement("button");
+    idrarPanelKapat.type = "button";
+    idrarPanelKapat.textContent = "×";
+    idrarPanelKapat.title = "Paneli kapat";
+    idrarPanelKapat.style.cssText = `
+        border: 0;
+        background: transparent;
+        color: white;
+        font-size: 20px;
+        line-height: 18px;
+        cursor: pointer;
+        padding: 0 3px;
+    `;
+
+    // AŞAMA 1: HASTANIN HANGİ DURUMDA GELDİĞİNİ SEÇ
+    const idrarAsamaBolumu = document.createElement("div");
+    const idrarAsamaAciklama = document.createElement("div");
+    idrarAsamaAciklama.textContent = "Hastanın geliş durumunu seç:";
+    idrarAsamaAciklama.style.cssText = `
+        font-size: 12px;
+        line-height: 1.3;
+        margin-bottom: 6px;
+    `;
+
+    // 3'lü grup geliş seçeneklerinin tamamında: Hasta Geçmişi'ni kapat,
+    // Laboratuvar'a geç ve Tüm Gelişler'i seç.
+    async function ucGrupLaboratuvariHazirla() {
+        // Hasta Geçmişi bu oturumda daha önce kapatılmadıysa kapat.
+        if (!window.fonetHastaGecmisiKapatildi) {
+            const kapatmaSimgeleri = [
+                ...document.querySelectorAll("img.x-tool-img.x-tool-close")
+            ].filter(el => el.getClientRects().length > 0);
+
+            const hastaGecmisiKapat = kapatmaSimgeleri[kapatmaSimgeleri.length - 1];
+            if (!hastaGecmisiKapat) {
+                throw new Error("Hasta Geçmişi penceresinin kapatma simgesi bulunamadı.");
+            }
+
+            hastaGecmisiKapat.click();
+            window.fonetHastaGecmisiKapatildi = true;
+            await bekle(600);
+            console.log("Hasta Geçmişi penceresi kapatıldı.");
+        } else {
+            console.log("Hasta Geçmişi penceresi bu akışta zaten kapatılmış.");
+        }
+
+        // Laboratuvar sekmesine geç.
+        const labYazi = [...document.querySelectorAll("span.x-tab-inner")]
+            .find(el =>
+                el.getClientRects().length > 0 &&
+                el.textContent.trim() === "Laboratuvar"
+            );
+        const labSekmesi = labYazi?.closest("a.x-tab");
+
+        if (!labSekmesi) {
+            throw new Error("Laboratuvar sekmesi bulunamadı.");
+        }
+
+        labSekmesi.click();
+        await bekle(700);
+
+        // Doğru açılır kutu, dinamik ID yerine input[name="stokDurumu"] ile belirlenir.
+        const stokDurumuAlanlari = [...document.querySelectorAll('input[name="stokDurumu"]')]
+            .filter(el => el.getClientRects().length > 0);
+
+        if (stokDurumuAlanlari.length !== 1) {
+            throw new Error(
+                "Laboratuvar stok durumu alanı tekil olarak bulunamadı. Görünür alan sayısı: " +
+                stokDurumuAlanlari.length
+            );
+        }
+
+        const stokDurumu = stokDurumuAlanlari[0];
+        const stokDurumuOku = stokDurumu.closest("tr")
+            ?.querySelector(".x-form-arrow-trigger");
+
+        if (!stokDurumuOku) {
+            throw new Error("Tüm Gelişler açılır kutusunun oku bulunamadı.");
+        }
+
+        stokDurumuOku.click();
+        await bekle(400);
+
+        // Açılan listede yalnızca tam metni eşleşen görünür seçeneği seç.
+        let tumGelisSecenegi = null;
+        const secenekBaslangic = Date.now();
+
+        while (!tumGelisSecenegi && Date.now() - secenekBaslangic < 5000) {
+            tumGelisSecenegi = [...document.querySelectorAll(".x-boundlist-item")]
+                .find(el =>
+                    el.getClientRects().length > 0 &&
+                    el.textContent.trim() === "Tüm Gelişler"
+                );
+
+            if (!tumGelisSecenegi) await bekle(200);
+        }
+
+        if (!tumGelisSecenegi) {
+            throw new Error("Açılır listede Tüm Gelişler seçeneği bulunamadı.");
+        }
+
+        tumGelisSecenegi.click();
+        await bekle(350);
+
+        if (stokDurumu.value.trim() !== "Tüm Gelişler") {
+            throw new Error(
+                "Tüm Gelişler seçimi kutuda doğrulanamadı. Görünen değer: " +
+                (stokDurumu.value || "(boş)")
+            );
+        }
+
+        console.log("Laboratuvar sekmesi açıldı; Tüm Gelişler seçildi.");
+    }
+
+    const idrarAsamaSecenekleri = [
+        "2/3 idrar vermek için geliyor",
+        "3/3 idrar vermek için geliyor",
+        "3 idrar bitmiş kontrole geliyor"
+    ];
+
+    const idrarAsamaButonlari = idrarAsamaSecenekleri.map((secenek, index) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = secenek;
+        b.style.cssText = `
+            display: block;
+            width: 100%;
+            padding: 6px 7px;
+            margin: 0 0 4px;
+            border: 1px solid rgba(255,255,255,.18);
+            border-radius: 5px;
+            background: ${index === 0 ? "#087f8c" : index === 1 ? "#536d8a" : "#16834a"};
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: left;
+            cursor: pointer;
+        `;
+        b.addEventListener("click", async () => {
+            const laboratuvarHazirligiGerekli =
+                secenek === "2/3 idrar vermek için geliyor" ||
+                secenek === "3/3 idrar vermek için geliyor" ||
+                secenek === "3 idrar bitmiş kontrole geliyor";
+
+            if (laboratuvarHazirligiGerekli && !window.fonetStandartGirisTamamlandi) {
+                alert("Önce Standart Giriş otomasyonunu tamamla. Hasta Geçmişi açıldıktan sonra 3'lü grup geliş seçeneklerinden birini seçebilirsin.");
+                return;
+            }
+
+            if (laboratuvarHazirligiGerekli) {
+                if (window.fonetF8Running || window.fonetDSKayitBekleniyor) return;
+
+                window.fonetAbortRequested = false;
+                window.fonetF8Running = true;
+                butonlariKilitle(true);
+                durum.textContent = "Hasta Geçmişi kapatılıyor; Laboratuvar hazırlanıyor...";
+
+                try {
+                    // Önce laboratuvar ekranını hazırla; ardından kirli idrar kararını göster.
+                    await ucGrupLaboratuvariHazirla();
+
+                    window.fonetIdrar3luGelmeDurumu = secenek;
+                    window.fonetIdrar3luSecim = null;
+                    idrarAsamaBolumu.style.display = "none";
+                    labSonucBolumu.style.display = "block";
+                    labSonucSecenekleriniGoster(secenek);
+                    idrarSecimDurumu.textContent =
+                        "Geliş aşaması: " + secenek + " | Kirli idrar durumu henüz seçilmedi.";
+                    durum.textContent = "3 lü grup: " + secenek + " | Laboratuvar: Tüm Gelişler";
+                    console.log("3'lü grup geliş durumu seçildi; Laboratuvar/Tüm Gelişler hazır:", secenek);
+                } catch (err) {
+                    if (abortHatasiMi(err)) {
+                        durum.textContent = "ABORT MISSION: Laboratuvar hazırlığı durduruldu.";
+                        console.warn("[DS TURBO] Laboratuvar hazırlığı iptal edildi.");
+                    } else {
+                        durum.textContent = "Laboratuvar hazırlığı durdu.";
+                        alert("3'lü grup laboratuvar hazırlığı durdu: " + err.message);
+                        console.error("3'lü grup laboratuvar hazırlık hatası:", err);
+                    }
+                } finally {
+                    window.fonetF8Running = false;
+                    butonlariKilitle(false);
+                }
+                return;
+            }
+
+            // Bu dal yalnızca laboratuvar hazırlığı gerektirmeyen bir 3'lü geliş seçeneği
+            // kalırsa kullanılacak güvenli yedek yoldur.
+            window.fonetIdrar3luGelmeDurumu = secenek;
+            window.fonetIdrar3luSecim = null;
+            idrarAsamaBolumu.style.display = "none";
+            labSonucBolumu.style.display = "block";
+            labSonucSecenekleriniGoster(secenek);
+            idrarSecimDurumu.textContent =
+                "Geliş aşaması: " + secenek + " | Kirli idrar durumu henüz seçilmedi.";
+            durum.textContent = "3 lü grup: " + secenek;
+            console.log("3'lü grup geliş durumu seçildi:", secenek);
+        });
+        return b;
+    });
+
+    idrarAsamaBolumu.appendChild(idrarAsamaAciklama);
+    idrarAsamaButonlari.forEach(b => idrarAsamaBolumu.appendChild(b));
+
+    // AŞAMA 2: SEÇİLEN GELİŞ DURUMUNA GÖRE LAB SONUCU SEÇENEKLERİ
+    const labSonucBolumu = document.createElement("div");
+    labSonucBolumu.style.display = "none";
+
+    const idrarSoru = document.createElement("div");
+    idrarSoru.textContent = "Lab sonuçları açıldı, herhangi bir idrarda kirli sonuç var mı ?";
+    idrarSoru.style.cssText = `
+        font-size: 12px;
+        line-height: 1.3;
+        margin-bottom: 7px;
+    `;
+
+    const idrarSecimDurumu = document.createElement("div");
+    idrarSecimDurumu.textContent = "Henüz seçim yapılmadı.";
+    idrarSecimDurumu.style.cssText = `
+        color: #b0bec5;
+        font-size: 11px;
+        margin-top: 3px;
+        min-height: 22px;
+        line-height: 1.3;
+    `;
+
+    const idrarSecimButonAlani = document.createElement("div");
+    let idrarSecimButonlari = [];
+
+    function labSonucSecenekleriniGoster(gelmeDurumu) {
+        const idrarSecenekler =
+            gelmeDurumu === "3 idrar bitmiş kontrole geliyor"
+                ? ["Evet, kirli idrar var", "3 idrar da temiz"]
+                : ["Evet, kirli idrar var", "Hayır, kirli idrar yok"];
+
+        window.fonetIdrar3luSecim = null;
+        idrarSecimButonAlani.replaceChildren();
+
+        idrarSecimButonlari = idrarSecenekler.map(secenek => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.textContent = secenek;
+            b.style.cssText = `
+                display: block;
+                width: 100%;
+                padding: 6px 7px;
+                margin: 0 0 4px;
+                border: 1px solid rgba(255,255,255,.18);
+                border-radius: 5px;
+                background: ${
+                    secenek === "Evet, kirli idrar var"
+                        ? "#9a5b36"
+                        : secenek === "Hayır, kirli idrar yok"
+                            ? "#536d8a"
+                            : "#16834a"
+                };
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                text-align: left;
+                cursor: pointer;
+            `;
+            b.setAttribute("aria-pressed", "false");
+
+            b.addEventListener("click", () => {
+                // Geliş aşamasını tıklama anında sabitle; 2/3 ve 3/3 kararları
+                // aynı PAM+ dalına açıkça yönlendirilir.
+                const secilenGelmeDurumu = window.fonetIdrar3luGelmeDurumu;
+                window.fonetIdrar3luSecim = secenek;
+
+                idrarSecimDurumu.textContent =
+                    "Geliş aşaması: " + secilenGelmeDurumu +
+                    " | Seçilen sonuç: " + secenek;
+                idrarSecimDurumu.style.color = "#ffffff";
+
+                idrarSecimButonlari.forEach(digerButon => {
+                    const secili = digerButon === b;
+                    digerButon.style.outline = secili ? "2px solid #ffffff" : "none";
+                    digerButon.style.outlineOffset = secili ? "1px" : "0";
+                    digerButon.setAttribute("aria-pressed", secili ? "true" : "false");
+                });
+
+                durum.textContent =
+                    "3 lü grup: " + secilenGelmeDurumu + " / " + secenek;
+                console.log("3'lü grup kararı seçildi:", {
+                    gelmeDurumu: secilenGelmeDurumu,
+                    kirliIdrarDurumu: secenek
+                });
+
+                // 3'lü grubun tüm geliş aşamalarında PAM+ dalı:
+                // Şikayet + Özgeçmiş'e PAM+ metni yazılır, kayıt doğrulanır,
+                // DNT1 kesinlikle gönderilmez.
+                const pamPlusGelisAsamalari = [
+                    "2/3 idrar vermek için geliyor",
+                    "3/3 idrar vermek için geliyor",
+                    "3 idrar bitmiş kontrole geliyor"
+                ];
+
+                if (
+                    secenek === "Evet, kirli idrar var" &&
+                    pamPlusGelisAsamalari.includes(secilenGelmeDurumu)
+                ) {
+                    const pamPlusMetni = "idrarda pam+, 6 lı gruba alındı";
+                    console.log("[DS TURBO] PAM+ özel akışı seçildi:", {
+                        gelmeDurumu: secilenGelmeDurumu,
+                        metin: pamPlusMetni,
+                        dnt1Gonder: false
+                    });
+
+                    durum.textContent =
+                        "3 lü grup: " + secilenGelmeDurumu + " / PAM+ kaydı başlıyor (DNT1 yok).";
+
+                    void idrarSenaryosuBaslat({
+                        grup: "3 lü grup",
+                        idrarMetni: pamPlusMetni,
+                        gelmeDurumu: secilenGelmeDurumu,
+                        labSonucu: secenek,
+                        grupTuru: null,
+                        dnt1Gonder: false,
+                        dnt1sizMesaj: "İdrarda PAM+ notu",
+                        amatemEk8Ac: true
+                    });
+                    return;
+                }
+
+                // 3 idrar bitmiş kontrole gelen ve tüm sonuçları temiz olan hasta:
+                // özel kontrol notunu kaydet, başarıyı doğrula ve DNT1 göndermeden bitir.
+                if (
+                    secilenGelmeDurumu === "3 idrar bitmiş kontrole geliyor" &&
+                    secenek === "3 idrar da temiz"
+                ) {
+                    const temizKontrolMetni = `3/3 idrar sonrası kontrol.
+hepsi temiz.
+tedavi gerekmez grubuna alındı.`;
+
+                    durum.textContent = "3 idrar sonrası temiz kontrol kaydı başlıyor (DNT1 yok).";
+                    console.log("[DS TURBO] 3 idrar sonrası temiz kontrol özel akışı seçildi:", {
+                        gelmeDurumu: secilenGelmeDurumu,
+                        metin: temizKontrolMetni,
+                        dnt1Gonder: false
+                    });
+
+                    void idrarSenaryosuBaslat({
+                        grup: "3 lü grup",
+                        idrarMetni: temizKontrolMetni,
+                        gelmeDurumu: secilenGelmeDurumu,
+                        labSonucu: secenek,
+                        grupTuru: null,
+                        dnt1Gonder: false,
+                        dnt1sizMesaj: "3 idrar sonrası temiz kontrol notu"
+                    });
+                    return;
+                }
+
+                // Beklenmeyen bir geliş aşamasında Evet yanıtını standart metne düşürme.
+                if (secenek === "Evet, kirli idrar var") {
+                    alert(
+                        "PAM+ akışı için geliş aşaması tanınmadı: " +
+                        (secilenGelmeDurumu || "(boş)") +
+                        ". Yanlış not yazılmasını önlemek için işlem başlatılmadı."
+                    );
+                    return;
+                }
+
+                // Kirli idrar yoksa 2/3 veya 3/3 için standart not + DNT1 akışı sürer.
+                // "3 idrar bitmiş kontrole geliyor" yolunun diğer yanıtı şimdilik ayrı kalır.
+                if (secilenGelmeDurumu !== "3 idrar bitmiş kontrole geliyor") {
+                    const eslesen = secilenGelmeDurumu?.match(/^(\d)\/3/);
+                    if (!eslesen) {
+                        alert("3'lü grup idrar aşaması okunamadı. Otomasyon başlatılmadı.");
+                        return;
+                    }
+
+                    void idrarSenaryosuBaslat({
+                        grup: "3 lü grup",
+                        idrarMetni: `${eslesen[1]}/3 idrar istendi.`,
+                        gelmeDurumu: secilenGelmeDurumu,
+                        labSonucu: secenek,
+                        grupTuru: null
+                    });
+                }
+            });
+
+            return b;
+        });
+
+        idrarSecimButonlari.forEach(b => idrarSecimButonAlani.appendChild(b));
+        idrarSecimDurumu.textContent = "Henüz seçim yapılmadı.";
+        idrarSecimDurumu.style.color = "#b0bec5";
+    }
+
+    labSonucBolumu.appendChild(idrarSoru);
+    labSonucBolumu.appendChild(idrarSecimButonAlani);
+    labSonucBolumu.appendChild(idrarSecimDurumu);
+
+    // 6'LI GRUP: GRUP TÜRÜ VE HASTANIN KAÇINCI İDRAR İÇİN GELDİĞİNİ SEÇ
+    const altiGrupBolumu = document.createElement("div");
+    altiGrupBolumu.style.display = "none";
+
+    // Grup türü seçenekleri: aynı anda yalnızca biri aktif olabilir.
+    const altiGrupKategoriSatiri = document.createElement("div");
+    altiGrupKategoriSatiri.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 4px;
+        margin: 0 0 6px;
+    `;
+
+    const altiGrupKategoriEtiketi = document.createElement("span");
+    altiGrupKategoriEtiketi.textContent = "Varsa seçin:";
+    altiGrupKategoriEtiketi.style.cssText = `
+        color: #cfd8dc;
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+        flex: 0 0 auto;
+    `;
+
+    function altiGrupKategoriButonuOlustur(id, yazi) {
+        const b = document.createElement("button");
+        b.id = id;
+        b.type = "button";
+        b.textContent = yazi;
+        b.setAttribute("aria-pressed", "false");
+        b.style.cssText = `
+            width: auto;
+            padding: 5px 5px;
+            margin: 0;
+            border: 1px solid rgba(255,255,255,.35);
+            border-radius: 5px;
+            background: #455a64;
+            color: #ffffff;
+            font-size: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+        `;
+        return b;
+    }
+
+    const idsButon = altiGrupKategoriButonuOlustur(
+        "fonetAltiGrupIDS",
+        "İDS"
+    );
+    const yatisSonrasiButon = altiGrupKategoriButonuOlustur(
+        "fonetAltiGrupYatisSonrasi",
+        "YATIŞ SONRASI (YS)"
+    );
+    const altiGrupKategoriButonlari = [idsButon, yatisSonrasiButon];
+    window.fonetIdrar6liGrupTuru = null;
+
+    function altiGrupKategoriGorseliniGuncelle() {
+        altiGrupKategoriButonlari.forEach(b => {
+            const secili = b.dataset.kategori === window.fonetIdrar6liGrupTuru;
+            b.style.background = secili ? "#ffca28" : "#455a64";
+            b.style.color = secili ? "#263238" : "#ffffff";
+            b.style.border = secili
+                ? "2px solid #fff59d"
+                : "1px solid rgba(255,255,255,.35)";
+            b.style.boxShadow = secili
+                ? "inset 0 2px 4px rgba(0,0,0,.28), 0 0 0 2px rgba(255,202,40,.18)"
+                : "none";
+            b.style.fontWeight = secili ? "800" : "600";
+            b.setAttribute("aria-pressed", secili ? "true" : "false");
+        });
+    }
+
+    function altiGrupDurumunuGuncelle() {
+        // İDS veya YS seçilmemişse varsayılan kategori Normal'dir.
+        const tur = window.fonetIdrar6liGrupTuru || "Normal";
+        const turEtiketi = tur === "YS" ? "YATIŞ SONRASI (YS)" : tur;
+        const gelmeDurumu = window.fonetIdrar6liGelmeDurumu;
+        const turMetni = " / " + turEtiketi;
+        durum.textContent = gelmeDurumu
+            ? "6 lı grup" + turMetni + ": " + gelmeDurumu
+            : "6 lı grup" + turMetni + ": geliş aşaması seçilmedi.";
+    }
+
+    idsButon.dataset.kategori = "İDS";
+    yatisSonrasiButon.dataset.kategori = "YS";
+
+    altiGrupKategoriButonlari.forEach(b => {
+        b.addEventListener("click", () => {
+            const tiklananKategori = b.dataset.kategori;
+
+            // Aktif butona tekrar basılırsa seçim kalkar ve Normal gruba dönülür.
+            window.fonetIdrar6liGrupTuru =
+                window.fonetIdrar6liGrupTuru === tiklananKategori
+                    ? null
+                    : tiklananKategori;
+
+            altiGrupKategoriGorseliniGuncelle();
+            altiGrupSecenekGorselleriniGuncelle();
+            altiGrupDurumunuGuncelle();
+
+            if (window.fonetIdrar6liGrupTuru) {
+                console.log("6'lı grup türü seçildi:", window.fonetIdrar6liGrupTuru);
+            } else {
+                console.log("6'lı grup türü seçimi kaldırıldı. Normal grup etkin.");
+            }
+        });
+    });
+
+    const altiGrupAciklama = document.createElement("div");
+    altiGrupAciklama.textContent = "Hastanın kaçıncı idrarı vermek için geldiğini seç:";
+    altiGrupAciklama.style.cssText = `
+        font-size: 12px;
+        line-height: 1.3;
+        margin-bottom: 6px;
+    `;
+
+    const altiGrupSecenekleri = Array.from(
+        { length: 6 },
+        (_, index) => `${index + 1}/6 idrarını verecek`
+    );
+
+    // Her idrar seçeneğini, kategori durumunu gösteren işaret SOLDA olacak şekilde aynı satırda tut.
+    const altiGrupSecimSatirlari = [];
+    const altiGrupSecimButonlari = altiGrupSecenekleri.map((secenek, index) => {
+        const satir = document.createElement("div");
+        satir.style.cssText = `
+            display: flex;
+            align-items: stretch;
+            gap: 4px;
+            width: 100%;
+            margin: 0 0 3px;
+        `;
+
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = secenek;
+        b.style.cssText = `
+            flex: 1 1 auto;
+            min-width: 0;
+            padding: 6px 7px;
+            margin: 0;
+            border: 1px solid rgba(255,255,255,.22);
+            border-radius: 5px;
+            background: ${index % 2 === 0 ? "#087f8c" : "#536d8a"};
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: left;
+            cursor: pointer;
+            transition: border .15s ease, box-shadow .15s ease, background .15s ease;
+        `;
+        b.setAttribute("aria-pressed", "false");
+
+        // İDS veya YS aktif olduğunda her satırın solunda kalıcı ve belirgin işaret.
+        const kategoriIsareti = document.createElement("div");
+        kategoriIsareti.style.cssText = `
+            display: none;
+            flex: 0 0 57px;
+            box-sizing: border-box;
+            align-items: center;
+            justify-content: center;
+            padding: 3px 2px;
+            border-radius: 5px;
+            font-size: 9px;
+            font-weight: 900;
+            line-height: 1.25;
+            letter-spacing: .2px;
+            text-align: center;
+            white-space: pre-line;
+        `;
+
+        b.addEventListener("click", () => {
+            if (!window.fonetStandartGirisTamamlandi) {
+                alert("Önce Standart Giriş otomasyonunu tamamla. Hasta Geçmişi açıldıktan sonra 6'lı grup idrar seçimini yapabilirsin.");
+                return;
+            }
+
+            window.fonetIdrar6liGelmeDurumu = secenek;
+
+            altiGrupSecimButonlari.forEach(digerButon => {
+                const secili = digerButon === b;
+                digerButon.style.outline = secili ? "2px solid #ffffff" : "none";
+                digerButon.style.outlineOffset = secili ? "1px" : "0";
+                digerButon.setAttribute("aria-pressed", secili ? "true" : "false");
+            });
+
+            altiGrupDurumunuGuncelle();
+            const grupTuru = window.fonetIdrar6liGrupTuru || "Normal";
+            console.log("6'lı grup geliş durumu seçildi:", {
+                grupTuru,
+                gelmeDurumu: secenek
+            });
+
+            const eslesen = secenek.match(/^(\d)\/6/);
+            if (!eslesen) {
+                alert("6'lı grup idrar aşaması okunamadı. Otomasyon başlatılmadı.");
+                return;
+            }
+
+            // Kategori seçimine göre Şikayet ve Özgeçmiş'e yazılacak tek metni oluştur.
+            // Normal grupta eski ifade korunur; İDS ve YS'de kategori metnin başına gelir.
+            const idrarNotMetni = grupTuru === "İDS"
+                ? `İDS ${eslesen[1]}/6 idrar istendi`
+                : grupTuru === "YS"
+                    ? `Yatış sonrası ${eslesen[1]}/6 idrar istendi`
+                    : `${eslesen[1]}/6 idrar istendi.`;
+
+            void idrarSenaryosuBaslat({
+                grup: "6 lı grup",
+                idrarMetni: idrarNotMetni,
+                gelmeDurumu: secenek,
+                labSonucu: null,
+                grupTuru
+            });
+        });
+
+        // Kategori göstergesi ana idrar butonunun SOLUNDA yer alır.
+        satir.appendChild(kategoriIsareti);
+        satir.appendChild(b);
+        altiGrupSecimSatirlari.push({
+            satir,
+            buton: b,
+            isaret: kategoriIsareti
+        });
+        return b;
+    });
+
+    // Kategori seçimine göre altı idrar butonunun tamamını belirgin biçimde vurgula.
+    function altiGrupSecenekGorselleriniGuncelle() {
+        const tur = window.fonetIdrar6liGrupTuru;
+        let renk = null;
+        let koyuArkaPlan = null;
+        let etiket = "";
+
+        if (tur === "İDS") {
+            renk = "#ffca28";
+            koyuArkaPlan = "#3b2f00";
+            etiket = "İDS\nAKTİF";
+        } else if (tur === "YS") {
+            renk = "#a8ff00";
+            koyuArkaPlan = "#183000";
+            etiket = "YS\nAKTİF";
+        }
+
+        altiGrupSecimSatirlari.forEach(({ buton, isaret }) => {
+            if (renk) {
+                // Ana butonda kategori rengini taşıyan sade ve belirgin çerçeve.
+                buton.style.border = `2px solid ${renk}`;
+                buton.style.boxShadow = "inset 0 0 0 1px rgba(255,255,255,.08)";
+
+                // Kategori göstergesi ana butonun SOLUNDA, sade bir etiket olarak görünür.
+                isaret.textContent = etiket;
+                isaret.style.display = "flex";
+                isaret.style.color = renk;
+                isaret.style.background = koyuArkaPlan;
+                isaret.style.border = `1px solid ${renk}`;
+                isaret.style.boxShadow = "none";
+                isaret.style.textShadow = "none";
+            } else {
+                // Normal 6'lı grupta soldaki kategori işareti ve renkli çerçeve görünmez.
+                buton.style.border = "1px solid rgba(255,255,255,.22)";
+                buton.style.boxShadow = "none";
+                isaret.style.display = "none";
+                isaret.textContent = "";
+            }
+        });
+    }
+
+    altiGrupBolumu.appendChild(altiGrupKategoriSatiri);
+    altiGrupKategoriSatiri.appendChild(altiGrupKategoriEtiketi);
+    altiGrupKategoriSatiri.appendChild(idsButon);
+    altiGrupKategoriSatiri.appendChild(yatisSonrasiButon);
+    altiGrupBolumu.appendChild(altiGrupAciklama);
+    altiGrupSecimSatirlari.forEach(({ satir }) => altiGrupBolumu.appendChild(satir));
+
+    idrarPanelUst.appendChild(idrarPanelBaslik);
+    idrarPanelUst.appendChild(idrarPanelKapat);
+    idrarPanel.appendChild(idrarPanelUst);
+    idrarPanel.appendChild(idrarAsamaBolumu);
+    idrarPanel.appendChild(labSonucBolumu);
+    idrarPanel.appendChild(altiGrupBolumu);
+    document.body.appendChild(idrarPanel);
+
+    // AMATEM — Standart Giriş sonrası Hasta Geçmişi kapatma ve not kaydı.
+    const amatemPanel = document.createElement("div");
+    amatemPanel.id = "fonetAmatemPanel";
+    amatemPanel.style.cssText = idrarPanel.style.cssText;
+    amatemPanel.style.display = "none";
+    const amatemUst = document.createElement("div");
+    amatemUst.style.cssText = idrarPanelUst.style.cssText;
+    const amatemBaslik = document.createElement("div");
+    amatemBaslik.textContent = "AMATEM";
+    amatemBaslik.style.cssText = idrarPanelBaslik.style.cssText;
+    const amatemKapat = document.createElement("button");
+    amatemKapat.type = "button";
+    amatemKapat.textContent = "×";
+    amatemKapat.title = "AMATEM panelini kapat";
+    amatemKapat.setAttribute("aria-label", amatemKapat.title);
+    amatemKapat.style.cssText = idrarPanelKapat.style.cssText;
+    amatemUst.appendChild(amatemBaslik);
+    amatemUst.appendChild(amatemKapat);
+    amatemPanel.appendChild(amatemUst);
+    const amatemSecimler = [
+        ["fonetAmatemDisIstem", "Dış İstem"],
+        ["fonetAmatemSavcilikTalimat", "Savcılık Talimat Büro"],
+        ["fonetAmatemSavcilikUyusturucu", "Savcılık Uyuşturucu Büro"],
+        ["fonetAmatemSavcilikCocuk", "Savcılık Çocuk Büro"],
+        ["fonetAmatem6284", "6284"],
+        ["fonetAmatemSK", "SK"],
+        ["fonetAmatemEhliyet", "Ehliyet"]
+    ];
+    const amatemDurum = document.createElement("div");
+    amatemDurum.style.cssText = "font-size:11px;color:#cfd8dc;line-height:1.3;margin-top:4px;";
+    amatemDurum.textContent = "Arayüz testi — otomasyon henüz bağlı değil.";
+    // 6284, SK ve Ehliyet: numaralar elle girilir; onay not kaydını başlatır.
+    let amatemIdrarTuru = null;
+    let amatemIdrarSecimi = null;
+    const amatemHazirMetni = "AMATEM — önce Standart Giriş, ardından işlem türünü seç.";
+    const amatemSabitMetinler = {
+        fonetAmatemDisIstem: "dış merkez\ntetkik istendi",
+        fonetAmatemSavcilikTalimat: "TC İSTANBUL ANADOLU CUMHURİYET BAŞSAVCILIĞI TALİMAT BÜROSU\u0027NDAN YAZI İLE GELEN ŞAHIS\nTETKİK İSTENDİ",
+        fonetAmatemSavcilikUyusturucu: "TC İSTANBUL ANADOLU CUMHURİYET BAŞSAVCILIĞI UYUŞTURUCU MADDE BULUNDURMA SATIN ALMA VE KULLANMA SUÇLARI BÜROSU\u0027NDAN YAZI İLE GELEN ŞAHIS\nTETKİK İSTENDİ",
+        fonetAmatemSavcilikCocuk: "TC İSTANBUL ANADOLU CUMHURİYET BAŞSAVCILIĞI ÇOCUK BÜROSU'NDAN YAZI İLE GELEN ŞAHIS, TETKİK İSTENDİ"
+    };
+    amatemDurum.textContent = amatemHazirMetni;
+    const amatemIdrarSatiri = document.createElement("div");
+    amatemIdrarSatiri.id = "fonetAmatemIdrarSatiri";
+    amatemIdrarSatiri.style.cssText = "display:none;align-items:center;gap:5px;margin:4px 0 6px;padding:5px;border:1px solid #8799d0;border-radius:5px;background:#354678;";
+    const amatemIdrarInput = document.createElement("input");
+    amatemIdrarInput.id = "fonetAmatemIdrarNo";
+    amatemIdrarInput.type = "number";
+    amatemIdrarInput.min = "1";
+    amatemIdrarInput.max = "6";
+    amatemIdrarInput.step = "1";
+    amatemIdrarInput.placeholder = "X";
+    amatemIdrarInput.autocomplete = "off";
+    amatemIdrarInput.setAttribute("aria-label", "İdrar sıra numarası (1-6)");
+    amatemIdrarInput.style.cssText = "box-sizing:border-box;width:48px;min-width:0;flex:0 0 48px;height:30px;border:1px solid #b4c2eb;border-radius:4px;background:#fff;color:#263238;font-size:14px;font-weight:bold;text-align:center;";
+    const amatemIdrarOnay = document.createElement("button");
+    amatemIdrarOnay.id = "fonetAmatemIdrarOnay";
+    amatemIdrarOnay.type = "button";
+    amatemIdrarOnay.textContent = "/ 6 idrarını verecek";
+    amatemIdrarOnay.style.cssText = "flex:1;min-width:0;min-height:30px;border:0;border-radius:4px;background:#455a9c;color:#fff;font-size:12px;font-weight:bold;cursor:pointer;";
+    amatemIdrarSatiri.appendChild(amatemIdrarInput);
+    const amatemIdrarBolme = document.createElement("span");
+    amatemIdrarBolme.textContent = "/";
+    amatemIdrarBolme.style.cssText = "display:none;color:#fff;font-size:14px;font-weight:bold;";
+    const amatemIdrarToplam = document.createElement("input");
+    amatemIdrarToplam.id = "fonetAmatemIdrarToplam";
+    amatemIdrarToplam.type = "number";
+    amatemIdrarToplam.min = "1";
+    amatemIdrarToplam.step = "1";
+    amatemIdrarToplam.placeholder = "Y";
+    amatemIdrarToplam.autocomplete = "off";
+    amatemIdrarToplam.setAttribute("aria-label", "Toplam idrar sayısı");
+    amatemIdrarToplam.style.cssText = amatemIdrarInput.style.cssText;
+    amatemIdrarToplam.style.display = "none";
+    amatemIdrarSatiri.appendChild(amatemIdrarBolme);
+    amatemIdrarSatiri.appendChild(amatemIdrarToplam);
+    amatemIdrarSatiri.appendChild(amatemIdrarOnay);
+
+    function amatemIdrarGirdisiniSifirla() {
+        amatemIdrarTuru = null;
+        amatemIdrarSecimi = null;
+        amatemIdrarInput.value = "";
+        amatemIdrarToplam.value = "";
+        amatemIdrarSatiri.style.display = "none";
+        amatemIdrarToplam.style.display = "none";
+        amatemIdrarBolme.style.display = "none";
+        amatemIdrarInput.max = "6";
+        amatemIdrarInput.setAttribute("aria-label", "İdrar sıra numarası (1-6)");
+        amatemIdrarOnay.textContent = "/ 6 idrarını verecek";
+        amatemIdrarInput.removeAttribute("aria-invalid");
+        amatemIdrarToplam.removeAttribute("aria-invalid");
+    }
+    function amatemIdrarGirdisiniAc(tur) {
+        amatemIdrarGirdisiniSifirla();
+        amatemIdrarTuru = tur;
+        amatemIdrarSatiri.style.display = "flex";
+        if (tur === "Ehliyet") {
+            amatemIdrarInput.removeAttribute("max");
+            amatemIdrarInput.setAttribute("aria-label", "İdrar sıra numarası");
+            amatemIdrarBolme.style.display = "inline";
+            amatemIdrarToplam.style.display = "block";
+            amatemIdrarOnay.textContent = "idrarını verecek";
+            amatemDurum.textContent = tur + " — sıra ve toplam sayıyı gir.";
+        } else {
+            amatemDurum.textContent = tur + " — idrar sıra numarasını gir.";
+        }
+        amatemIdrarInput.focus();
+    }
+    function amatemIdrarGirdisiniOnayla() {
+        if (window.fonetF8Running || window.fonetDSKayitBekleniyor || !amatemIdrarTuru || amatemPanel.style.display === "none" || amatemIdrarSatiri.style.display === "none") return;
+        const deger = amatemIdrarInput.value.trim();
+        const ehliyet = amatemIdrarTuru === "Ehliyet";
+        const toplamDeger = ehliyet ? amatemIdrarToplam.value.trim() : "6";
+        const pozitifTamSayi = v => /^[1-9][0-9]*$/.test(v) && Number.isSafeInteger(Number(v));
+        if (!pozitifTamSayi(deger) || (!ehliyet && !/^[1-6]$/.test(deger))) {
+            amatemIdrarSecimi = null;
+            amatemIdrarInput.setAttribute("aria-invalid", "true");
+            amatemDurum.textContent = ehliyet ? "Sıra numarası pozitif tam sayı olmalı." : "Lütfen 1 ile 6 arasında bir tam sayı gir.";
+            amatemIdrarInput.focus();
+            return;
+        }
+        if (!pozitifTamSayi(toplamDeger) || Number(deger) > Number(toplamDeger)) {
+            amatemIdrarSecimi = null;
+            amatemIdrarToplam.setAttribute("aria-invalid", "true");
+            amatemDurum.textContent = "Toplam sayı, sıra numarasından küçük olamaz.";
+            amatemIdrarToplam.focus();
+            return;
+        }
+        amatemIdrarInput.removeAttribute("aria-invalid");
+        amatemIdrarToplam.removeAttribute("aria-invalid");
+        const sira = Number(deger), toplam = Number(toplamDeger);
+        const tur = amatemIdrarTuru;
+        const metin = (ehliyet ? tur + " " : tur + ", ") + sira + "/" + toplam + " idrar istendi";
+        amatemIdrarSecimi = { tur, sira, toplam, metin };
+        amatemNotKaydet(tur, metin);
+    }
+    amatemIdrarOnay.addEventListener("click", amatemIdrarGirdisiniOnayla);
+    [amatemIdrarInput, amatemIdrarToplam].forEach(input => {
+        input.addEventListener("input", () => {
+            amatemIdrarSecimi = null;
+            input.removeAttribute("aria-invalid");
+            if (amatemIdrarTuru) amatemDurum.textContent = amatemIdrarTuru + " — idrar sayılarını gir.";
+        });
+        input.addEventListener("keydown", e => {
+            e.stopPropagation();
+            if (e.key === "Enter") {
+                e.preventDefault();
+                if (amatemIdrarTuru === "Ehliyet" && input === amatemIdrarInput) amatemIdrarToplam.focus();
+                else amatemIdrarGirdisiniOnayla();
+            }
+        });
+    });
+
+    const amatemSecimButonlari = amatemSecimler.map(([id, yazi]) => {
+        const b = document.createElement("button");
+        b.id = id;
+        b.type = "button";
+        b.textContent = yazi;
+        b.style.cssText = "box-sizing:border-box;width:100%;min-height:30px;padding:6px 9px;margin-bottom:4px;border:1px solid rgba(255,255,255,.22);border-radius:4px;background:#455a9c;color:#fff;font-size:12px;font-weight:bold;text-align:left;cursor:pointer;";
+        b.addEventListener("click", () => {
+            if (window.fonetF8Running || window.fonetDSKayitBekleniyor) return;
+            if (id === "fonetAmatem6284" || id === "fonetAmatemSK" || id === "fonetAmatemEhliyet") {
+                amatemIdrarGirdisiniAc(yazi);
+            } else {
+                amatemIdrarGirdisiniSifirla();
+                if (Object.prototype.hasOwnProperty.call(amatemSabitMetinler, id)) {
+                    amatemNotKaydet(yazi, amatemSabitMetinler[id]);
+                } else {
+                    amatemDurum.textContent = yazi + " — not metni henüz tanımlanmadı; kayıt yapılmadı.";
+                }
+            }
+        });
+        amatemPanel.appendChild(b);
+        return b;
+    });
+    amatemPanel.appendChild(amatemIdrarSatiri);
+    amatemPanel.appendChild(amatemDurum);
+    document.body.appendChild(amatemPanel);
+    function amatemPanelGoster(acik) {
+        amatemPanel.style.display = acik ? "block" : "none";
+        amatemButon.setAttribute("aria-expanded", String(acik));
+    }
+    amatemKapat.addEventListener("click", () => amatemPanelGoster(false));
+    amatemButon.addEventListener("click", () => {
+        if (window.fonetF8Running || window.fonetDSKayitBekleniyor || panelDaraltildi) return;
+        if (amatemPanel.style.display !== "none") {
+            amatemPanelGoster(false);
+            return;
+        }
+        idrarPanel.style.display = "none";
+        amatemIdrarGirdisiniSifirla();
+        amatemDurum.textContent = amatemHazirMetni;
+        idrarPanelKonumunuGuncelle();
+        amatemPanelGoster(true);
+    });
+
+    function idrarPanelKonumunuGuncelle() {
+        // Yan panel, ana panelin güncel dış genişliğine göre konumlandırılır.
+        const anaPanelDisGenisligi = panelDaraltildi
+            ? 28
+            : panel.getBoundingClientRect().width;
+        idrarPanel.style.right = `${Math.round(anaPanelDisGenisligi + 27)}px`;
+        amatemPanel.style.right = idrarPanel.style.right;
+    }
+
+    panelKenarDugmesi.addEventListener("click", () => {
+        // Otomasyon sürerken paneli daraltma; ABORT MISSION her zaman görünür kalsın.
+        if (!panelDaraltildi && (window.fonetF8Running || window.fonetDSKayitBekleniyor)) {
+            durum.textContent = "İşlem sürerken panel daraltılamaz; ABORT MISSION erişilebilir kalmalı.";
+            return;
+        }
+
+        if (!panelDaraltildi) {
+            panelOncekiGenislik = Math.max(
+                148,
+                panel.getBoundingClientRect().width - 14
+            );
+            panelDaraltildi = true;
+            idrarPanelDaraltmaOncesiAcikti = idrarPanel.style.display !== "none";
+            if (idrarPanelDaraltmaOncesiAcikti) idrarPanel.style.display = "none";
+            amatemPanelDaraltmaOncesiAcikti = amatemPanel.style.display !== "none";
+            amatemPanelGoster(false);
+
+            panelContent.style.display = "none";
+            panelBoyutlandirmaKenar.style.display = "none";
+            panel.style.width = "24px";
+            panel.style.minWidth = "24px";
+            panel.style.maxWidth = "24px";
+            panel.style.padding = "4px 2px";
+
+            panelKenarDugmesi.textContent = "›";
+            panelKenarDugmesi.title = "Paneli genişlet";
+            panelKenarDugmesi.setAttribute("aria-label", "Paneli genişlet");
+            panelKenarDugmesi.setAttribute("aria-expanded", "false");
+            panelKenarDugmesi.style.left = "3px";
+            panelKenarDugmesi.style.width = "22px";
+            panelKenarDugmesi.style.borderRight = "1px solid rgba(255,255,255,.28)";
+            panelKenarDugmesi.style.borderRadius = "7px";
+        } else {
+            panelDaraltildi = false;
+            panel.style.width = `${panelOncekiGenislik}px`;
+            panel.style.minWidth = "148px";
+            panel.style.maxWidth = "360px";
+            panel.style.padding = "7px";
+            panelContent.style.display = "block";
+            panelBoyutlandirmaKenar.style.display = "block";
+
+            panelKenarDugmesi.textContent = "‹";
+            panelKenarDugmesi.title = "Paneli daralt";
+            panelKenarDugmesi.setAttribute("aria-label", "Paneli daralt");
+            panelKenarDugmesi.setAttribute("aria-expanded", "true");
+            panelKenarDugmesi.style.left = "-16px";
+            panelKenarDugmesi.style.width = "22px";
+            panelKenarDugmesi.style.borderRight = "0";
+            panelKenarDugmesi.style.borderRadius = "7px 0 0 7px";
+
+            if (idrarPanelDaraltmaOncesiAcikti) {
+                idrarPanel.style.display = "block";
+                idrarPanelDaraltmaOncesiAcikti = false;
+            }
+            if (amatemPanelDaraltmaOncesiAcikti) {
+                amatemPanelGoster(true);
+                amatemPanelDaraltmaOncesiAcikti = false;
+            }
+        }
+
+        idrarPanelKonumunuGuncelle();
+    });
+
+    panelBoyutlandirmaKenar.addEventListener("mousedown", e => {
+        if (panelDaraltildi || e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const baslangicX = e.clientX;
+        const baslangicDisGenislik = panel.getBoundingClientRect().width;
+
+        const surukle = hareket => {
+            const ekranSiniri = Math.max(162, Math.min(374, window.innerWidth - 16));
+            const yeniDisGenislik = Math.max(
+                162,
+                Math.min(ekranSiniri, baslangicDisGenislik + baslangicX - hareket.clientX)
+            );
+            panelOncekiGenislik = yeniDisGenislik - 14;
+            panel.style.width = `${panelOncekiGenislik}px`;
+            idrarPanelKonumunuGuncelle();
+        };
+
+        const birak = () => {
+            document.removeEventListener("mousemove", surukle);
+            document.removeEventListener("mouseup", birak);
+        };
+
+        document.addEventListener("mousemove", surukle);
+        document.addEventListener("mouseup", birak);
+    });
+
+    idrarPanelKonumunuGuncelle();
+
+    idrarPanelKapat.addEventListener("click", () => {
+        idrarPanel.style.display = "none";
+    });
+
+    ucGrupButon.addEventListener("click", () => {
+        if (window.fonetF8Running || window.fonetDSKayitBekleniyor) return;
+
+        amatemPanelGoster(false);
+        // Her yeni açılışta akışı ilk sorudan başlat ve önceki seçimi temizle.
+        window.fonetIdrar3luGelmeDurumu = null;
+        window.fonetIdrar3luSecim = null;
+        idrarAsamaBolumu.style.display = "block";
+        labSonucBolumu.style.display = "none";
+        altiGrupBolumu.style.display = "none";
+        window.fonetIdrar6liGelmeDurumu = null;
+        window.fonetIdrar6liGrupTuru = null;
+        altiGrupKategoriGorseliniGuncelle();
+        altiGrupSecimButonlari.forEach(b => {
+            b.style.outline = "none";
+            b.setAttribute("aria-pressed", "false");
+        });
+        idrarSecimDurumu.textContent = "Henüz seçim yapılmadı.";
+        idrarSecimDurumu.style.color = "#b0bec5";
+        idrarSecimButonlari.forEach(b => {
+            b.style.outline = "none";
+            b.setAttribute("aria-pressed", "false");
+        });
+        idrarPanelBaslik.textContent = "3 lü grup";
+        idrarPanel.style.display = "block";
+    });
+
+    altiGrupButon.addEventListener("click", () => {
+        if (window.fonetF8Running || window.fonetDSKayitBekleniyor) return;
+
+        amatemPanelGoster(false);
+        // 6'lı grup her açıldığında önceki seçimi temizle ve altı seçeneği göster.
+        window.fonetIdrar6liGelmeDurumu = null;
+        // İDS/Yatış Sonrası seçilmezse 6'lı grup Normal kabul edilir.
+        window.fonetIdrar6liGrupTuru = "Normal";
+        window.fonetIdrar3luGelmeDurumu = null;
+        window.fonetIdrar3luSecim = null;
+        altiGrupKategoriGorseliniGuncelle();
+        altiGrupSecenekGorselleriniGuncelle();
+
+        idrarAsamaBolumu.style.display = "none";
+        labSonucBolumu.style.display = "none";
+        altiGrupBolumu.style.display = "block";
+
+        altiGrupSecimButonlari.forEach(b => {
+            b.style.outline = "none";
+            b.setAttribute("aria-pressed", "false");
+        });
+
+        idrarPanelBaslik.textContent = "6 lı grup";
+        idrarPanel.style.display = "block";
+        altiGrupDurumunuGuncelle();
+    });
+
+    // BUTON DURUMU
+    function butonlariKilitle(kilitli) {
+        standartButon.disabled = kilitli;
+        ilkBasvuruButon.disabled = kilitli;
+        cezaeviDsButon.disabled = kilitli;
+        kontrolSevkButon.disabled = kilitli;
+        makroButon.disabled = kilitli;
+        ucGrupButon.disabled = kilitli;
+        altiGrupButon.disabled = kilitli;
+        amatemButon.disabled = kilitli;
+        amatemButon.style.opacity = kilitli ? "0.6" : "1";
+        amatemSecimButonlari.forEach(b => { b.disabled = kilitli; b.style.opacity = kilitli ? "0.6" : "1"; });
+        amatemIdrarInput.disabled = kilitli;
+        amatemIdrarToplam.disabled = kilitli;
+        amatemIdrarOnay.disabled = kilitli;
+        idrarAsamaButonlari.forEach(b => { b.disabled = kilitli; });
+        idrarSecimButonlari.forEach(b => { b.disabled = kilitli; });
+        altiGrupKategoriButonlari.forEach(b => { b.disabled = kilitli; });
+        altiGrupSecimButonlari.forEach(b => { b.disabled = kilitli; });
+
+        standartButon.style.opacity = kilitli ? "0.6" : "1";
+        ilkBasvuruButon.style.opacity = kilitli ? "0.6" : "1";
+        cezaeviDsButon.style.opacity = kilitli ? "0.6" : "1";
+        kontrolSevkButon.style.opacity = kilitli ? "0.6" : "1";
+        makroButon.style.opacity = kilitli ? "0.6" : "1";
+        ucGrupButon.style.opacity = kilitli ? "0.6" : "1";
+        altiGrupButon.style.opacity = kilitli ? "0.6" : "1";
+        // ABORT MISSION hiçbir zaman kilitlenmez; devam eden akışı durdurabilmelidir.
+        abortMissionButon.disabled = false;
+        abortMissionButon.style.opacity = "1";
+    }
+
+    function abortHatasiMi(err) {
+        return !!err && err.name === "AbortError";
+    }
+
+    abortMissionButon.addEventListener("click", () => {
+        const aktifIslem = !!(window.fonetF8Running || window.fonetDSKayitBekleniyor);
+
+        if (!aktifIslem) {
+            durum.textContent = "ABORT MISSION: Aktif otomasyon yok.";
+            console.log("[DS TURBO] ABORT MISSION tıklandı; durdurulacak aktif otomasyon yok.");
+            return;
+        }
+
+        window.fonetAbortRequested = true;
+
+        // DS manuel kayıt bekleme izleyicisi varsa iptal et.
+        if (window.fonetDSObserver) {
+            window.fonetDSObserver.disconnect();
+            window.fonetDSObserver = null;
+        }
+
+        // İlk Başvuru / Kontrol Amaçlı Sevk fonksiyonu, DS manuel kayıt aşamasında
+        // kendi async fonksiyonunu bitirmiş ve yalnızca MutationObserver bekliyor olur.
+        const manuelDSKaydiBekleniyor =
+            !!window.fonetDSKayitBekleniyor && !window.fonetF8Running;
+
+        if (manuelDSKaydiBekleniyor) {
+            window.fonetDSKayitBekleniyor = false;
+            window.fonetF8Running = false;
+            butonlariKilitle(false);
+            durum.textContent = "ABORT MISSION: DS kayıt takibi durduruldu; form açık kaldı.";
+            console.warn("[DS TURBO] DS manuel kayıt izleyicisi kullanıcı tarafından durduruldu.");
+            alert(
+                "ABORT MISSION: DS kayıt takibi durduruldu.\n\n" +
+                "DS Hasta Kartı penceresi açık bırakıldı. Otomatik kapatma ve DNT1 artık çalışmayacak. " +
+                "Kaydet'e bastıysan kaydın sunucuya gönderilmiş olabileceğini unutma; sonucu ekrandan kontrol et."
+            );
+            return;
+        }
+
+        durum.textContent = "ABORT MISSION: Durdurma isteği gönderildi...";
+        console.warn("[DS TURBO] ABORT MISSION istendi; otomasyon bir sonraki güvenli bekleme noktasında duracak.");
+        alert(
+            "ABORT MISSION: Durdurma isteği alındı.\n\n" +
+            "Otomasyon, mevcut kısa beklemenin ardından yeni adıma geçmeden duracak. " +
+            "Fonet'e daha önce gönderilmiş Kaydet veya Enter işlemleri geri alınamaz; ekrandaki kayıt ve makro durumunu kontrol et."
+        );
+    });
+
+    // STANDART GİRİŞ
+    async function standartGiris() {
+        if (window.fonetF8Running || window.fonetDSKayitBekleniyor) return;
+
+        window.fonetAbortRequested = false;
+        window.fonetStandartGirisTamamlandi = false;
+        window.fonetHastaGecmisiKapatildi = false;
+        window.fonetF8Running = true;
+        butonlariKilitle(true);
+        durum.textContent = "Standart giriş çalışıyor...";
+
+        try {
+            // 1. KABUL
+            const kabul = document.querySelector(
+                'a.x-btn[role="button"][data-qtip="Kabul"]'
+            );
+
+            if (!kabul) throw new Error("Kabul butonu bulunamadı.");
+
+            kabul.click();
+            await bekle(500);
+
+            // 2. F54 TANISI
+            const tani = document.querySelector('input[name="tani"]');
+
+            if (!tani) throw new Error("Tanı alanı bulunamadı.");
+
+            const setter = Object.getOwnPropertyDescriptor(
+                HTMLInputElement.prototype, "value"
+            ).set;
+
+            setter.call(tani, "F54");
+            tani.dispatchEvent(new Event("input", { bubbles: true }));
+            tani.dispatchEvent(new Event("change", { bubbles: true }));
+
+            tani.dispatchEvent(new KeyboardEvent("keydown", {
+                key: "Enter", keyCode: 13, which: 13, bubbles: true
+            }));
+
+            tani.dispatchEvent(new KeyboardEvent("keyup", {
+                key: "Enter", keyCode: 13, which: 13, bubbles: true
+            }));
+
+            await bekle(500);
+
+            // 3. DİĞER BİLGİLER
+            const diger = [...document.querySelectorAll("a.x-tab")]
+                .find(el => el.innerText.trim() === "Diğer Bilgiler");
+
+            if (!diger) throw new Error("Diğer Bilgiler sekmesi bulunamadı.");
+
+            diger.click();
+            await bekle(500);
+
+            // 4. SİGARA EVET
+            const sigara = document.querySelector(
+                'input[name="sigaraKullanim"]'
+            );
+
+            if (!sigara) throw new Error("Sigara alanı bulunamadı.");
+
+            const ok = sigara.parentElement.parentElement
+                .querySelector(".x-form-arrow-trigger");
+
+            if (!ok) throw new Error("Sigara menüsü bulunamadı.");
+
+            ok.click();
+            await bekle(300);
+
+            const evet = [...document.querySelectorAll(".x-boundlist-item")]
+                .find(el => el.textContent.trim() === "EVET");
+
+            if (!evet) throw new Error("EVET seçeneği bulunamadı.");
+
+            evet.click();
+            await bekle(500);
+
+            // 5. HASTA GEÇMİŞİ
+            const gecmis = [...document.querySelectorAll("a.x-btn")]
+                .find(el =>
+                    el.querySelector(".goHistory16") &&
+                    el.innerText.trim() === "Hasta Geçmişi"
+                );
+
+            if (!gecmis) throw new Error("Hasta Geçmişi bulunamadı.");
+
+            gecmis.click();
+            await bekle(500);
+
+            const gorunurKapatma = [...document.querySelectorAll("img.x-tool-img.x-tool-close")]
+                .some(el => el.getClientRects().length > 0);
+
+            if (!gorunurKapatma) {
+                throw new Error("Hasta Geçmişi açıldıktan sonra görünür kapatma simgesi doğrulanamadı.");
+            }
+
+            window.fonetStandartGirisTamamlandi = true;
+            durum.textContent = "Standart giriş tamamlandı. İdrar senaryosunu seçebilirsin.";
+            console.log("Standart giriş otomasyonu tamamlandı; idrar senaryosu seçimine hazır.");
+
+        } catch (err) {
+            window.fonetStandartGirisTamamlandi = false;
+            if (abortHatasiMi(err)) {
+                durum.textContent = "ABORT MISSION: Standart Giriş durduruldu.";
+                console.warn("[DS TURBO] Standart Giriş kullanıcı tarafından durduruldu.");
+            } else {
+                durum.textContent = "Hata oluştu.";
+                alert("Standart giriş durdu: " + err.message);
+                console.error(err);
+            }
+
+        } finally {
+            window.fonetF8Running = false;
+            butonlariKilitle(false);
+        }
+    }
+
+    // 3'LÜ / 6'LI İDRAR SENARYOLARI İÇİN ORTAK OTOMASYON
+    // Standart Giriş tamamlandıktan sonra ilgili seçim butonundan çağrılır.
+    // AMATEM: Standart Giriş sonrası not kaydı; DNT1 ve DS Hasta Kartı yok.
+    async function amatemNotKaydet(tur, metin) {
+        if (window.fonetF8Running || window.fonetDSKayitBekleniyor) return;
+        if (!window.fonetStandartGirisTamamlandi) {
+            amatemDurum.textContent = "Önce Standart Giriş otomasyonunu tamamla.";
+            alert("Önce Standart Giriş otomasyonunu tamamla. AMATEM işlemi başlatılmadı.");
+            return;
+        }
+        window.fonetAbortRequested = false;
+        window.fonetStandartGirisTamamlandi = false;
+        window.fonetF8Running = true;
+        butonlariKilitle(true);
+        amatemDurum.textContent = tur + " — Hasta Geçmişi kapatılıyor...";
+        durum.textContent = "AMATEM: " + tur + " — işlem sürüyor.";
+        let kaydetTiklandi = false;
+        let kayitDogrulandi = false;
+        let kayitObserver = null;
+        const basariMesaji = "Kayıt işlemi başarılı";
+        const tekilGorunur = (selector, filtre, ad) => {
+            const adaylar = [...document.querySelectorAll(selector)].filter(el =>
+                el.getClientRects().length > 0 &&
+                !el.disabled && el.getAttribute("aria-disabled") !== "true" &&
+                !el.classList.contains("x-item-disabled") &&
+                (!filtre || filtre(el))
+            );
+            if (adaylar.length !== 1) throw new Error(ad + " tekil olarak bulunamadı. Görünür aday: " + adaylar.length);
+            return adaylar[0];
+        };
+        const sekme = ad => tekilGorunur("a.x-tab", el => el.innerText.trim() === ad, ad + " sekmesi");
+        const alan = ad => tekilGorunur('textarea[name="' + ad + '"]', el => !el.readOnly, ad + " alanı");
+        const mesajVar = () => (document.body.innerText || "").includes(basariMesaji);
+        const notYaz = (el, ad) => {
+            abortKontrol();
+            const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+            setter.call(el, metin);
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+            if (el.value !== metin) throw new Error(ad + " metni doğrulanamadı.");
+        };
+        try {
+            abortKontrol();
+            // 1. AÇIK HASTA GEÇMİŞİ PENCERESİNİ KAPAT
+            // Kullanıcının doğruladığı HTML sınıfı kullanılır; dinamik ID kullanılmaz.
+            if (window.fonetHastaGecmisiKapatildi) {
+                console.log("Hasta Geçmişi penceresi 3'lü grup laboratuvar hazırlığında zaten kapatılmış.");
+                window.fonetHastaGecmisiKapatildi = false;
+            } else {
+                const gecmisKapatmaButonlari = [
+                    ...document.querySelectorAll("img.x-tool-img.x-tool-close")
+                ].filter(el => el.getClientRects().length > 0);
+
+                const gecmisKapatma = gecmisKapatmaButonlari[gecmisKapatmaButonlari.length - 1];
+                if (!gecmisKapatma) {
+                    throw new Error("Hasta Geçmişi penceresinin kapatma butonu bulunamadı.");
+                }
+
+                gecmisKapatma.click();
+                window.fonetHastaGecmisiKapatildi = true;
+                await bekle(600);
+                window.fonetHastaGecmisiKapatildi = false;
+                console.log("Hasta Geçmişi penceresi kapatıldı.");
+            }
+
+            // Not alanlarına geç; Standart Giriş adımlarını yeniden çalıştırma.
+            amatemDurum.textContent = tur + " — notlar yazılıyor...";
+            sekme("Doktor Notları").click();
+            await bekle(500);
+            sekme("Şikayet").click();
+            await bekle(500);
+            const sikayet = alan("sikayet");
+            notYaz(sikayet, "Şikayet");
+            await bekle(400);
+            sekme("Özgeçmiş").click();
+            await bekle(500);
+            const ozgecmis = alan("ozgecmis");
+            notYaz(ozgecmis, "Özgeçmiş");
+            await bekle(400);
+            if (sikayet.value !== metin || ozgecmis.value !== metin) throw new Error("Not alanları kayıt öncesi doğrulanamadı.");
+            const eskiMesajBaslangic = Date.now();
+            while (mesajVar() && Date.now() - eskiMesajBaslangic < 7000) await bekle(100);
+            if (mesajVar()) throw new Error("Önceki kayıt başarı mesajı kaybolmadı; yeni kayıt gönderilmedi.");
+            const kaydet = tekilGorunur("a.x-btn", el => /^Kaydet(?:\s*\[F6\])?$/.test(el.innerText.trim()), "Kaydet");
+            abortKontrol();
+            // Yeni başarı mesajını tıklamadan hemen önce izlemeye başla.
+            const kayitMesajKontrol = () => {
+                if (!window.fonetAbortRequested && kaydetTiklandi && mesajVar()) kayitDogrulandi = true;
+            };
+            kayitObserver = new MutationObserver(kayitMesajKontrol);
+            kayitObserver.observe(document.body, {childList:true, subtree:true, characterData:true, attributes:true});
+            kaydetTiklandi = true;
+            kaydet.click();
+            kayitMesajKontrol();
+            const kayitBaslangic = Date.now();
+            while (!kayitDogrulandi && Date.now() - kayitBaslangic < 7000) {
+                await bekle(100);
+                kayitMesajKontrol();
+            }
+            abortKontrol();
+            if (!kayitDogrulandi) throw new Error("Yeni kayıt başarı mesajı 7 saniyede doğrulanamadı.");
+            kayitObserver.disconnect();
+            kayitObserver = null;
+            amatemIdrarGirdisiniSifirla();
+            amatemDurum.textContent = tur + " — Şikayet ve Özgeçmiş kaydı doğrulandı.";
+            durum.textContent = "AMATEM: " + tur + " — kayıt başarılı.";
+        } catch (err) {
+            const uyari = kayitDogrulandi
+                ? " Not kaydı doğrulandı."
+                : (kaydetTiklandi ? " Kaydet'e basıldı; tekrar çalıştırmadan önce kayıt durumunu kontrol et." : " Kaydet'e basılmadı; Hasta Geçmişi ve not alanlarını kontrol et.");
+            amatemDurum.textContent = (abortHatasiMi(err) ? "İşlem durduruldu." : err.message) + uyari;
+            durum.textContent = "AMATEM: " + amatemDurum.textContent;
+            if (!abortHatasiMi(err)) alert(amatemDurum.textContent);
+            console.warn("[DS TURBO] AMATEM:", err);
+        } finally {
+            if (kayitObserver) kayitObserver.disconnect();
+            window.fonetF8Running = false;
+            butonlariKilitle(false);
+        }
+    }
+
+    async function idrarSenaryosuBaslat(senaryo) {
+        if (!window.fonetStandartGirisTamamlandi) {
+            alert("Önce Standart Giriş otomasyonunu tamamla. İdrar senaryosu başlatılmadı.");
+            return;
+        }
+        if (window.fonetF8Running || window.fonetDSKayitBekleniyor) return;
+
+        window.fonetAbortRequested = false;
+        window.fonetF8Running = true;
+        window.fonetStandartGirisTamamlandi = false;
+        butonlariKilitle(true);
+        idrarPanel.style.display = "none";
+
+        const kategoriMetni = senaryo.grupTuru ? ` / ${senaryo.grupTuru}` : "";
+        durum.textContent = `${senaryo.grup}: ${senaryo.idrarMetni} işlem başlıyor...`;
+        let kayitObserver = null;
+        let kayitDogrulandi = false;
+
+        try {
+            // 1. AÇIK HASTA GEÇMİŞİ PENCERESİNİ KAPAT
+            // Kullanıcının doğruladığı HTML sınıfı kullanılır; dinamik ID kullanılmaz.
+            if (window.fonetHastaGecmisiKapatildi) {
+                console.log("Hasta Geçmişi penceresi 3'lü grup laboratuvar hazırlığında zaten kapatılmış.");
+                window.fonetHastaGecmisiKapatildi = false;
+            } else {
+                const gecmisKapatmaButonlari = [
+                    ...document.querySelectorAll("img.x-tool-img.x-tool-close")
+                ].filter(el => el.getClientRects().length > 0);
+
+                const gecmisKapatma = gecmisKapatmaButonlari[gecmisKapatmaButonlari.length - 1];
+                if (!gecmisKapatma) {
+                    throw new Error("Hasta Geçmişi penceresinin kapatma butonu bulunamadı.");
+                }
+
+                gecmisKapatma.click();
+                window.fonetHastaGecmisiKapatildi = true;
+                await bekle(600);
+                window.fonetHastaGecmisiKapatildi = false;
+                console.log("Hasta Geçmişi penceresi kapatıldı.");
+            }
+
+            // 2. DOKTOR NOTLARI → ŞİKAYET
+            const doktorNotlari = [...document.querySelectorAll("a.x-tab")]
+                .find(el => el.getClientRects().length > 0 && el.innerText.trim() === "Doktor Notları");
+
+            if (!doktorNotlari) throw new Error("Doktor Notları sekmesi bulunamadı.");
+            doktorNotlari.click();
+            await bekle(500);
+
+            const sikayetSekme = [...document.querySelectorAll("a.x-tab")]
+                .find(el => el.getClientRects().length > 0 && el.innerText.trim() === "Şikayet");
+
+            if (!sikayetSekme) throw new Error("Şikayet sekmesi bulunamadı.");
+            sikayetSekme.click();
+            await bekle(500);
+
+            // 3. ŞİKAYET ALANINA SENARYO METNİNİ YAZ
+            const textareaSetter = Object.getOwnPropertyDescriptor(
+                HTMLTextAreaElement.prototype, "value"
+            ).set;
+
+            const sikayetAlani = document.querySelector('textarea[name="sikayet"]');
+            if (!sikayetAlani) throw new Error("Şikayet metin alanı bulunamadı.");
+
+            textareaSetter.call(sikayetAlani, senaryo.idrarMetni);
+            sikayetAlani.dispatchEvent(new Event("input", { bubbles: true }));
+            sikayetAlani.dispatchEvent(new Event("change", { bubbles: true }));
+            await bekle(400);
+
+            // 4. ÖZGEÇMİŞ SEKME VE AYNI METİN
+            const ozgecmisSekme = [...document.querySelectorAll("a.x-tab")]
+                .find(el => el.getClientRects().length > 0 && el.innerText.trim() === "Özgeçmiş");
+
+            if (!ozgecmisSekme) throw new Error("Özgeçmiş sekmesi bulunamadı.");
+            ozgecmisSekme.click();
+            await bekle(500);
+
+            const ozgecmisAlani = document.querySelector('textarea[name="ozgecmis"]');
+            if (!ozgecmisAlani) throw new Error("Özgeçmiş metin alanı bulunamadı.");
+
+            textareaSetter.call(ozgecmisAlani, senaryo.idrarMetni);
+            ozgecmisAlani.dispatchEvent(new Event("input", { bubbles: true }));
+            ozgecmisAlani.dispatchEvent(new Event("change", { bubbles: true }));
+            await bekle(400);
+
+            // 5. KAYDET BUTONUNU BUL
+            const kaydet = [...document.querySelectorAll("a.x-btn")]
+                .find(el =>
+                    el.getClientRects().length > 0 &&
+                    el.innerText.trim().startsWith("Kaydet")
+                );
+
+            if (!kaydet) throw new Error("Kaydet butonu bulunamadı.");
+
+            // 6. ÖNCEKİ BAŞARI MESAJININ KAYBOLMASINI BEKLE
+            // Böylece eski kayıt mesajı yeni kaydın başarısı sanılmaz.
+            const basariMesaji = "Kayıt işlemi başarılı";
+            const eskiMesajBaslangic = Date.now();
+
+            while (
+                (document.body.innerText || "").includes(basariMesaji) &&
+                Date.now() - eskiMesajBaslangic < 7000
+            ) {
+                await bekle(100);
+            }
+
+            if ((document.body.innerText || "").includes(basariMesaji)) {
+                throw new Error("Önceki 'Kayıt işlemi başarılı' mesajı ekrandan kaybolmadı. Yanlış doğrulamayı önlemek için Kaydet'e basılmadı.");
+            }
+
+            // 7. YENİ KAYIT BAŞARISINI İZLE VE KAYDET'E BAS
+            const mesajKontrol = () => {
+                if (window.fonetAbortRequested) {
+                    if (observer) observer.disconnect();
+                    return;
+                }
+                if (
+                    !kayitDogrulandi &&
+                    (document.body.innerText || "").includes(basariMesaji)
+                ) {
+                    kayitDogrulandi = true;
+                    console.log("İdrar senaryosu not kaydı doğrulandı.");
+                    if (kayitObserver) kayitObserver.disconnect();
+                }
+            };
+
+            kayitObserver = new MutationObserver(mesajKontrol);
+            kayitObserver.observe(document.body, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+
+            kaydet.click();
+
+            const kayitBaslangic = Date.now();
+            while (!kayitDogrulandi && Date.now() - kayitBaslangic < 7000) {
+                await bekle(100);
+                mesajKontrol();
+            }
+
+            if (kayitObserver) {
+                kayitObserver.disconnect();
+                kayitObserver = null;
+            }
+
+            if (!kayitDogrulandi) {
+                throw new Error("Not kaydının başarı mesajı 7 saniye içinde yakalanamadı. DNT1 adımına geçilmedi.");
+            }
+
+            await bekle(500);
+
+            // DNT1 gerektirmeyen özel dallar: kayıt başarıyla doğrulanınca otomasyonu bitir.
+            // PAM+ dalı ayrıca Formlar > Toplum ve Ruh Sağlığı Formları > Amatem Ek-8 Formu'nu açar.
+            // 3 idrar sonrası temiz kontrol dalı bu ek menü adımını çalıştırmaz.
+            if (senaryo.dnt1Gonder === false) {
+                const dnt1sizMesaj = senaryo.dnt1sizMesaj || "Özel kontrol notu";
+
+                if (senaryo.amatemEk8Ac === true) {
+                    abortKontrol();
+                    durum.textContent = "PAM+ kaydı doğrulandı. Formlar menüsü açılıyor...";
+
+                    // 1. FORMLAR MENÜSÜ
+                    const formlarYazi = [...document.querySelectorAll(".x-btn-inner")]
+                        .find(el =>
+                            el.getClientRects().length > 0 &&
+                            el.textContent.trim() === "Formlar"
+                        );
+                    const formlar = formlarYazi?.closest(".x-btn");
+
+                    if (!formlar) {
+                        throw new Error("PAM+ sonrası Formlar menüsü bulunamadı.");
+                    }
+
+                    formlar.click();
+                    await bekle(700);
+
+                    // 2. TOPLUM VE RUH SAĞLIĞI FORMLARI MENÜSÜNÜ BUL
+                    let toplum = null;
+                    const toplumBaslangic = Date.now();
+
+                    while (!toplum && Date.now() - toplumBaslangic < 5000) {
+                        toplum = [...document.querySelectorAll("span.x-menu-item-text")]
+                            .find(el =>
+                                el.getClientRects().length > 0 &&
+                                el.textContent.trim() === "Toplum ve Ruh Sağlığı Formları"
+                            );
+
+                        if (!toplum) await bekle(200);
+                    }
+
+                    if (!toplum) {
+                        throw new Error("Toplum ve Ruh Sağlığı Formları menüsü bulunamadı.");
+                    }
+
+                    // 3. ALT MENÜYÜ HOVER İLE AÇ
+                    toplum.dispatchEvent(new MouseEvent("mouseover", {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                    }));
+                    toplum.dispatchEvent(new MouseEvent("mouseenter", {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                    }));
+
+                    console.log("Toplum ve Ruh Sağlığı Formları üzerine hover yapıldı.");
+                    await bekle(700);
+
+                    // 4. AMATEM EK-8 FORMUNU METNİNDEN BUL VE AÇ
+                    let amatemEk8 = null;
+                    const amatemBaslangic = Date.now();
+
+                    while (!amatemEk8 && Date.now() - amatemBaslangic < 7000) {
+                        amatemEk8 = [...document.querySelectorAll("span.x-menu-item-text")]
+                            .find(el =>
+                                el.getClientRects().length > 0 &&
+                                el.textContent.trim() === "Amatem Ek-8 Formu"
+                            );
+
+                        if (!amatemEk8) await bekle(200);
+                    }
+
+                    if (!amatemEk8) {
+                        throw new Error("Amatem Ek-8 Formu menü seçeneği bulunamadı.");
+                    }
+
+                    console.log("Amatem Ek-8 Formu bulundu:", amatemEk8.outerHTML);
+                    amatemEk8.click();
+                    await bekle(1000);
+
+                    // 5. EK-8 FORMU AÇILDIKTAN SONRA FORM İÇİNDEKİ EKLE [F7] DÜĞMESİNE TIKLA
+                    // Dinamik ExtJS ID'sine bağlanmak yerine görünen düğme metnini kullan.
+                    let ekleDugmeYazi = null;
+                    const ekleBaslangic = Date.now();
+
+                    while (!ekleDugmeYazi && Date.now() - ekleBaslangic < 7000) {
+                        ekleDugmeYazi = [...document.querySelectorAll("span.x-btn-inner")]
+                            .find(el =>
+                                el.getClientRects().length > 0 &&
+                                el.textContent.replace(/\s+/g, " ").trim() === "Ekle [F7]"
+                            );
+
+                        if (!ekleDugmeYazi) await bekle(200);
+                    }
+
+                    if (!ekleDugmeYazi) {
+                        throw new Error("Amatem Ek-8 Formu açıldı ancak 'Ekle [F7]' düğmesi 7 saniye içinde bulunamadı.");
+                    }
+
+                    console.log("Amatem Ek-8 Ekle [F7] düğmesi bulundu:", ekleDugmeYazi.outerHTML);
+                    ekleDugmeYazi.click();
+                    await bekle(500);
+
+                    // 6. EK-8 FORMUNDA YALNIZCA "BAĞIMLILIK PROGRAMINA ALINMALI" CHECKBOX'INI İŞARETLE
+                    // Dinamik ExtJS ID'si yerine görünür alan etiketini kullan.
+                    let bagimlilikSatiri = null;
+                    const bagimlilikBaslangic = Date.now();
+
+                    while (!bagimlilikSatiri && Date.now() - bagimlilikBaslangic < 7000) {
+                        const eslesenEtiketler = [...document.querySelectorAll("label.x-form-item-label")]
+                            .filter(el =>
+                                el.getClientRects().length > 0 &&
+                                el.textContent.replace(/\s+/g, " ").trim() === "Bağımlılık Programına Alınmalı:"
+                            );
+
+                        if (eslesenEtiketler.length > 1) {
+                            throw new Error("EK-8 formunda 'Bağımlılık Programına Alınmalı' etiketi birden fazla bulundu; yanlış checkbox'ı işaretlememek için işlem durduruldu.");
+                        }
+
+                        if (eslesenEtiketler.length === 1) {
+                            bagimlilikSatiri = eslesenEtiketler[0].closest("tr.x-form-item-input-row");
+                        }
+
+                        if (!bagimlilikSatiri) await bekle(200);
+                    }
+
+                    if (!bagimlilikSatiri) {
+                        throw new Error("EK-8 formunda 'Bağımlılık Programına Alınmalı' checkbox'ı 7 saniye içinde bulunamadı.");
+                    }
+
+                    const bagimlilikCheckbox = bagimlilikSatiri.querySelector("input.x-form-checkbox");
+                    if (!bagimlilikCheckbox || bagimlilikSatiri.querySelectorAll("input.x-form-checkbox").length !== 1) {
+                        throw new Error("'Bağımlılık Programına Alınmalı' satırında tekil checkbox doğrulanamadı.");
+                    }
+
+                    // V30: Canlı testte doğrulanan ExtJS bileşen API'si ile işaretle.
+                    // Görsel CSS sınıflarına dayanma; gerçek değeri getValue() ile kontrol et.
+                    const bagimlilikCmpId = bagimlilikCheckbox.id.endsWith("-inputEl")
+                        ? bagimlilikCheckbox.id.slice(0, -"-inputEl".length)
+                        : null;
+
+                    let bagimlilikAlani = bagimlilikCmpId && window.Ext && typeof Ext.getCmp === "function"
+                        ? Ext.getCmp(bagimlilikCmpId)
+                        : null;
+
+                    if (bagimlilikAlani && bagimlilikAlani.inputEl?.dom !== bagimlilikCheckbox) {
+                        throw new Error("EK-8 checkbox ExtJS bileşeni bulunan DOM alanı ile eşleşmedi; işlem durduruldu.");
+                    }
+
+                    if (!bagimlilikAlani && window.Ext?.ComponentQuery?.query) {
+                        const adaylar = Ext.ComponentQuery.query("checkboxfield")
+                            .filter(c => c.inputEl?.dom === bagimlilikCheckbox);
+                        if (adaylar.length > 1) {
+                            throw new Error("EK-8 checkbox alanında birden fazla ExtJS bileşeni eşleşti; işlem durduruldu.");
+                        }
+                        bagimlilikAlani = adaylar[0] || null;
+                    }
+
+                    if (!bagimlilikAlani || typeof bagimlilikAlani.getValue !== "function" ||
+                        typeof bagimlilikAlani.setValue !== "function") {
+                        throw new Error("EK-8 Bağımlılık Programına Alınmalı ExtJS checkbox bileşeni doğrulanamadı; işlem durduruldu.");
+                    }
+
+                    // V31: Sadece checkbox'ın açtığı YENİ görünür metin alanını hedefle.
+                    // Fonet'in dinamik ExtJS ID'leri kullanılmaz; yanlış alana yazma riskinde durulur.
+                    const ek8Kapsam = bagimlilikSatiri.closest('.x-window') || document;
+                    const gorunurMetinAlanlari = () => [...ek8Kapsam.querySelectorAll(
+                        'textarea, input[type="text"], input:not([type])'
+                    )].filter(el => {
+                        if (el.disabled || el.readOnly || el === bagimlilikCheckbox) return false;
+                        const rect = el.getBoundingClientRect();
+                        const css = window.getComputedStyle(el);
+                        return el.getClientRects().length > 0 &&
+                            rect.width > 0 && rect.height > 0 &&
+                            css.visibility !== 'hidden' && css.display !== 'none';
+                    });
+                    const baslangictaGorunenler = new Set(gorunurMetinAlanlari());
+                    if (bagimlilikAlani.getValue() === true) {
+                        throw new Error('EK-8 checkbox önceden işaretli. Yeni açılan metin alanını güvenle saptamak için EK-8 Ekle ekranını yeni açıp tekrar dene.');
+                    }
+
+                    bagimlilikAlani.setValue(true);
+                    await bekle(400);
+                    abortKontrol();
+
+                    if (bagimlilikAlani.getValue() !== true) {
+                        throw new Error("EK-8 checkbox'ı setValue(true) sonrası getValue() ile doğrulanamadı. Formu manuel kontrol et.");
+                    }
+                    console.log('EK-8 checkbox ExtJS getValue() ile doğrulandı:', bagimlilikCheckbox.outerHTML);
+
+                    let yeniMetinAlani = null;
+                    const metinBaslangic = Date.now();
+                    while (!yeniMetinAlani && Date.now() - metinBaslangic < 5000) {
+                        abortKontrol();
+                        const yeniler = gorunurMetinAlanlari().filter(el => !baslangictaGorunenler.has(el));
+                        if (yeniler.length > 1) {
+                            console.warn('Checkbox sonrası açılan metin alanları:', yeniler.map(el => el.outerHTML));
+                            throw new Error('EK-8 checkbox sonrası birden fazla metin alanı görünür oldu; yanlış yere yazmamak için durduruldu.');
+                        }
+                        if (yeniler.length === 1) yeniMetinAlani = yeniler[0];
+                        else await bekle(200);
+                    }
+                    if (!yeniMetinAlani) {
+                        throw new Error('EK-8 checkbox sonrası yeni görünür metin alanı bulunamadı. Alanın HTML bilgisini kontrol et.');
+                    }
+
+                    const metinCmpId = yeniMetinAlani.id?.endsWith('-inputEl')
+                        ? yeniMetinAlani.id.slice(0, -'-inputEl'.length) : null;
+                    let metinCmp = metinCmpId && window.Ext?.getCmp ? Ext.getCmp(metinCmpId) : null;
+                    if (metinCmp && metinCmp.inputEl?.dom !== yeniMetinAlani) {
+                        throw new Error('EK-8 yeni metin alanı ile ExtJS bileşeni eşleşmedi; işlem durduruldu.');
+                    }
+                    if (!metinCmp && window.Ext?.ComponentQuery?.query) {
+                        const adaylar = Ext.ComponentQuery.query('field').filter(c => c.inputEl?.dom === yeniMetinAlani);
+                        if (adaylar.length > 1) throw new Error('EK-8 metin alanı birden fazla ExtJS bileşeniyle eşleşti.');
+                        metinCmp = adaylar[0] || null;
+                    }
+                    if (!metinCmp || typeof metinCmp.setValue !== 'function' || typeof metinCmp.getValue !== 'function') {
+                        throw new Error('EK-8 yeni metin alanının ExtJS bileşeni doğrulanamadı; yazma yapılmadı.');
+                    }
+                    const ek8Aciklama = '3 LÜ İDRARDA PAM POZİTİF, 6 LI İDRAR EĞİTİM GRUBUNA ALINDI';
+                    const mevcutDeger = String(metinCmp.getValue() ?? '');
+                    if (mevcutDeger.trim() && mevcutDeger !== ek8Aciklama) {
+                        throw new Error('EK-8 metin alanında önceden başka metin var; üzerine yazılmadı.');
+                    }
+                    if (mevcutDeger !== ek8Aciklama) metinCmp.setValue(ek8Aciklama);
+                    await bekle(250);
+                    abortKontrol();
+                    if (String(metinCmp.getValue()) !== ek8Aciklama) {
+                        throw new Error('EK-8 metin alanına yazılan içerik ExtJS getValue() ile doğrulanamadı.');
+                    }
+                    console.log('EK-8 yeni metin alanına açıklama yazıldı ve doğrulandı:', yeniMetinAlani.outerHTML);
+
+                    durum.textContent = 'PAM+ notu kaydedildi; EK-8 açıldı, Ekle [F7] tıklandı, checkbox işaretlendi ve açıklama yazıldı. DNT1 gönderilmedi.';
+                    console.log('PAM+ EK-8 akışı: checkbox ve açıklama doğrulandı. DNT1 gönderilmedi.');
+
+                    alert(
+                        'PAM+ not kaydı başarıyla doğrulandı.\n' +
+                        'Amatem EK-8 Formu açıldı, Ekle [F7] düğmesine tıklandı.\n' +
+                        "Bağımlılık Programına Alınmalı checkbox\'ı işaretlendi.\n" +
+                        'EK-8 açıklaması yazıldı ve doğrulandı.\n\n' +
+                        'EK-8 için Kaydet yapılmadı; alanları kontrol et.\n' +
+                        'Bu özel akışta DNT1 makrosu gönderilmedi.'
+                    );
+                    return;
+                }
+
+                // Diğer DNT1'siz özel dallar (ör. 3 idrar sonrası temiz kontrol)
+                // yalnızca not kaydını doğrular ve burada sonlanır.
+                durum.textContent = `${dnt1sizMesaj} kaydedildi. DNT1 gönderilmedi.`;
+                console.log("DNT1 gerektirmeyen özel idrar akışı tamamlandı.", {
+                    grup: senaryo.grup,
+                    gelmeDurumu: senaryo.gelmeDurumu,
+                    labSonucu: senaryo.labSonucu,
+                    metin: senaryo.idrarMetni,
+                    dnt1Gonder: false,
+                    amatemEk8Ac: false
+                });
+
+                alert(
+                    `${senaryo.grup} kaydı başarıyla doğrulandı.\n` +
+                    `${senaryo.idrarMetni}\n\n` +
+                    `${dnt1sizMesaj}. Bu özel akışta DNT1 makrosu gönderilmedi.`
+                );
+                return;
+            }
+
+            durum.textContent = "Not kaydı doğrulandı. Hizmet Listesi açılıyor...";
+
+            // 8. HİZMET LİSTESİ SEKME
+            const hizmetListesiYazi = [...document.querySelectorAll("span.x-tab-inner")]
+                .find(el =>
+                    el.getClientRects().length > 0 &&
+                    el.textContent.trim() === "Hizmet Listesi"
+                );
+
+            const hizmetListesi = hizmetListesiYazi?.closest("a.x-tab");
+            if (!hizmetListesi) throw new Error("Hizmet Listesi sekmesi bulunamadı.");
+
+            hizmetListesi.click();
+            await bekle(700);
+
+            // 9. DNT1 MAKROSUNU GÖNDER
+            const makro = document.querySelector('input[name="makrokodu"]');
+            if (!makro || makro.disabled || makro.readOnly) {
+                throw new Error("Makro ekleme kutusu bulunamadı veya pasif.");
+            }
+
+            const makroSetter = Object.getOwnPropertyDescriptor(
+                HTMLInputElement.prototype, "value"
+            ).set;
+
+            makro.focus();
+            makroSetter.call(makro, "DNT1");
+            makro.dispatchEvent(new Event("input", { bubbles: true }));
+            makro.dispatchEvent(new Event("change", { bubbles: true }));
+            makro.dispatchEvent(new KeyboardEvent("keydown", {
+                key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true
+            }));
+            makro.dispatchEvent(new KeyboardEvent("keyup", {
+                key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true
+            }));
+
+            await bekle(500);
+            const labMetni = senaryo.labSonucu ? ` | Lab kararı: ${senaryo.labSonucu}` : "";
+            durum.textContent = `${senaryo.grup}${kategoriMetni}: ${senaryo.idrarMetni} DNT1 gönderildi.`;
+            console.log("İdrar senaryosu tamamlandı:", {
+                grup: senaryo.grup,
+                grupTuru: senaryo.grupTuru || "Normal",
+                gelmeDurumu: senaryo.gelmeDurumu,
+                labSonucu: senaryo.labSonucu,
+                metin: senaryo.idrarMetni
+            });
+
+            alert(
+                `${senaryo.grup}${kategoriMetni} işlemi tamamlandı.\n` +
+                `${senaryo.idrarMetni}\n` +
+                `Şikayet ve Özgeçmiş kaydı doğrulandı; DNT1 Enter ile gönderildi.${labMetni}\n\n` +
+                "DNT1 makrosunun Hizmet Listesi'ne eklendiğini ekrandan kontrol et."
+            );
+
+        } catch (err) {
+            if (abortHatasiMi(err)) {
+                durum.textContent = "ABORT MISSION: İdrar otomasyonu durduruldu; ekranı kontrol et.";
+                console.warn("[DS TURBO] İdrar senaryosu kullanıcı tarafından durduruldu. Fonet'e gönderilmiş kayıtlar geri alınmaz.");
+            } else {
+                durum.textContent = "İdrar otomasyonu durdu: " + err.message;
+                alert("İdrar senaryosu otomasyonu durdu: " + err.message + "\n\nİşlemin hangi aşamada kaldığını kontrol et; tekrar çalıştırmadan önce kaydın yapılıp yapılmadığını doğrula.");
+                console.error("İdrar senaryosu otomasyon hatası:", err);
+            }
+
+        } finally {
+            if (kayitObserver) kayitObserver.disconnect();
+            window.fonetF8Running = false;
+            butonlariKilitle(false);
+        }
+    }
+
+    // DS KAYDI BAŞARILI OLDUKTAN SONRA ÇALIŞACAK ORTAK İŞLEMLER
+    async function dsKayitSonrasiIslemleri() {
+        if (window.fonetAbortRequested) return;
+        window.fonetF8Running = true;
+        butonlariKilitle(true);
+        try {
+            durum.textContent = "DS kaydı doğrulandı. Pencere kapatılıyor...";
+            console.log("DS HASTA KARTI KAYDI DOĞRULANDI.");
+
+            // 1. DS HASTA KARTI PENCERESİNİ KAPAT
+            const kapatButonlari = [
+                ...document.querySelectorAll(".x-tool-img.x-tool-close")
+            ].filter(el => el.getClientRects().length > 0);
+
+            const kapatResmi = kapatButonlari[kapatButonlari.length - 1];
+
+            if (!kapatResmi) {
+                throw new Error("DS Hasta Kartı kapatma butonu bulunamadı.");
+            }
+
+            kapatResmi.click();
+            console.log("DS Hasta Kartı penceresi kapatıldı.");
+            await bekle(700);
+
+            // 2. HİZMET LİSTESİ SEKME
+            const hizmetListesiYazi = [
+                ...document.querySelectorAll("span.x-tab-inner")
+            ].find(el =>
+                el.getClientRects().length > 0 &&
+                el.textContent.trim() === "Hizmet Listesi"
+            );
+
+            const hizmetListesi = hizmetListesiYazi?.closest("a.x-tab");
+
+            if (!hizmetListesi) {
+                throw new Error("Hizmet Listesi sekmesi bulunamadı.");
+            }
+
+            hizmetListesi.click();
+            await bekle(700);
+
+            // 3. DNT1 MAKROSUNU GÖNDER
+            const makro = document.querySelector('input[name="makrokodu"]');
+
+            if (!makro || makro.disabled || makro.readOnly) {
+                throw new Error("Makro ekleme kutusu bulunamadı veya pasif.");
+            }
+
+            const makroSetter = Object.getOwnPropertyDescriptor(
+                HTMLInputElement.prototype, "value"
+            ).set;
+
+            makro.focus();
+            makroSetter.call(makro, "DNT1");
+            makro.dispatchEvent(new Event("input", { bubbles: true }));
+            makro.dispatchEvent(new Event("change", { bubbles: true }));
+
+            makro.dispatchEvent(new KeyboardEvent("keydown", {
+                key: "Enter",
+                code: "Enter",
+                keyCode: 13,
+                which: 13,
+                bubbles: true
+            }));
+
+            makro.dispatchEvent(new KeyboardEvent("keyup", {
+                key: "Enter",
+                code: "Enter",
+                keyCode: 13,
+                which: 13,
+                bubbles: true
+            }));
+
+            await bekle(500);
+            durum.textContent = "DS kaydı tamamlandı; DNT1 gönderildi.";
+            console.log("DNT1 makrosu Enter ile gönderildi.");
+
+            alert(
+                "DS Hasta Kartı kaydı doğrulandı ve pencere kapatıldı. " +
+                "Hizmet Listesi açıldı, DNT1 makrosu Enter ile gönderildi. " +
+                "Makronun hizmet listesine eklendiğini ekrandan kontrol et."
+            );
+
+        } catch (err) {
+            if (abortHatasiMi(err)) {
+                durum.textContent = "ABORT MISSION: DS kayıt sonrası otomasyon durduruldu; ekranı kontrol et.";
+                console.warn("[DS TURBO] DS kayıt sonrası otomasyon kullanıcı tarafından durduruldu.");
+            } else {
+                durum.textContent = "DS kayıt sonrası işlem tamamlanamadı.";
+                console.error("DS kayıt sonrası işlem hatası:", err);
+                alert(
+                    "DS Hasta Kartı kaydı başarılı olarak doğrulandı; ancak " +
+                    "kayıt sonrası otomasyon tamamlanamadı: " + err.message +
+                    " Pencereyi ve Hizmet Listesi işlemlerini gerekirse manuel tamamla."
+                );
+            }
+
+        } finally {
+            window.fonetDSKayitBekleniyor = false;
+            if (window.fonetDSObserver) {
+                window.fonetDSObserver.disconnect();
+                window.fonetDSObserver = null;
+            }
+            window.fonetF8Running = false;
+            butonlariKilitle(false);
+        }
+    }
+
+    // İLK BAŞVURU / KONTROL AMAÇLI SEVK
+    // İki buton da aynı akışı kullanır; yalnızca yazılan metin değişir.
+    async function ilkBasvuru(metin, islemAdi, takvimAcilsin = false) {
+        if (window.fonetF8Running || window.fonetDSKayitBekleniyor) return;
+
+        window.fonetAbortRequested = false;
+        window.fonetStandartGirisTamamlandi = false;
+        window.fonetF8Running = true;
+        butonlariKilitle(true);
+        durum.textContent = islemAdi + " çalışıyor...";
+
+        try {
+            // 1. KABUL
+            const kabul = document.querySelector(
+                'a.x-btn[role="button"][data-qtip="Kabul"]'
+            );
+
+            if (!kabul) throw new Error("Kabul butonu bulunamadı.");
+
+            kabul.click();
+            await bekle(500);
+
+            // 2. F54 TANISI
+            const tani = document.querySelector('input[name="tani"]');
+
+            if (!tani) throw new Error("Tanı alanı bulunamadı.");
+
+            const inputSetter = Object.getOwnPropertyDescriptor(
+                HTMLInputElement.prototype, "value"
+            ).set;
+
+            inputSetter.call(tani, "F54");
+            tani.dispatchEvent(new Event("input", { bubbles: true }));
+            tani.dispatchEvent(new Event("change", { bubbles: true }));
+
+            tani.dispatchEvent(new KeyboardEvent("keydown", {
+                key: "Enter", keyCode: 13, which: 13, bubbles: true
+            }));
+
+            tani.dispatchEvent(new KeyboardEvent("keyup", {
+                key: "Enter", keyCode: 13, which: 13, bubbles: true
+            }));
+
+            await bekle(500);
+
+            // 3. DİĞER BİLGİLER
+            const diger = [...document.querySelectorAll("a.x-tab")]
+                .find(el => el.innerText.trim() === "Diğer Bilgiler");
+
+            if (!diger) throw new Error("Diğer Bilgiler sekmesi bulunamadı.");
+
+            diger.click();
+            await bekle(500);
+
+            // 4. SİGARA EVET
+            const sigara = document.querySelector(
+                'input[name="sigaraKullanim"]'
+            );
+
+            if (!sigara) throw new Error("Sigara alanı bulunamadı.");
+
+            const ok = sigara.parentElement.parentElement
+                .querySelector(".x-form-arrow-trigger");
+
+            if (!ok) throw new Error("Sigara menüsü bulunamadı.");
+
+            ok.click();
+            await bekle(300);
+
+            const sigaraEvet = [...document.querySelectorAll(".x-boundlist-item")]
+                .find(el => el.textContent.trim() === "EVET");
+
+            if (!sigaraEvet) throw new Error("EVET seçeneği bulunamadı.");
+
+            sigaraEvet.click();
+            await bekle(500);
+
+            // 5. DOKTOR NOTLARI
+            const doktorNotlari = [...document.querySelectorAll("a.x-tab")]
+                .find(el => el.innerText.trim() === "Doktor Notları");
+
+            if (!doktorNotlari) {
+                throw new Error("Doktor Notları sekmesi bulunamadı.");
+            }
+
+            doktorNotlari.click();
+            await bekle(500);
+
+            // 6. ŞİKÂYET SEKME
+            const sikayetSekme = [...document.querySelectorAll("a.x-tab")]
+                .find(el => el.innerText.trim() === "Şikayet");
+
+            if (!sikayetSekme) {
+                throw new Error("Şikayet sekmesi bulunamadı.");
+            }
+
+            sikayetSekme.click();
+            await bekle(500);
+
+            // 7. ŞİKÂYET METNİ
+            const textareaSetter = Object.getOwnPropertyDescriptor(
+                HTMLTextAreaElement.prototype, "value"
+            ).set;
+
+            const sikayetAlani = document.querySelector(
+                'textarea[name="sikayet"]'
+            );
+
+            if (!sikayetAlani) {
+                throw new Error("Şikâyet metin alanı bulunamadı.");
+            }
+
+            textareaSetter.call(sikayetAlani, metin);
+            sikayetAlani.dispatchEvent(
+                new Event("input", { bubbles: true })
+            );
+            sikayetAlani.dispatchEvent(
+                new Event("change", { bubbles: true })
+            );
+
+            await bekle(500);
+
+            // 8. ÖZGEÇMİŞ SEKME
+            const ozgecmisSekme = [...document.querySelectorAll("a.x-tab")]
+                .find(el => el.innerText.trim() === "Özgeçmiş");
+
+            if (!ozgecmisSekme) {
+                throw new Error("Özgeçmiş sekmesi bulunamadı.");
+            }
+
+            ozgecmisSekme.click();
+            await bekle(500);
+
+            // 9. ÖZGEÇMİŞ METNİ
+            const ozgecmisAlani = document.querySelector(
+                'textarea[name="ozgecmis"]'
+            );
+
+            if (!ozgecmisAlani) {
+                throw new Error("Özgeçmiş metin alanı bulunamadı.");
+            }
+
+            textareaSetter.call(ozgecmisAlani, metin);
+            ozgecmisAlani.dispatchEvent(
+                new Event("input", { bubbles: true })
+            );
+            ozgecmisAlani.dispatchEvent(
+                new Event("change", { bubbles: true })
+            );
+
+            await bekle(500);
+
+            // 10. İLK KAYIT MESAJI İZLEYİCİSİ
+            let kayitDogrulandi = false;
+            let observer;
+
+            const mesajKontrol = () => {
+                if (window.fonetAbortRequested) {
+                    if (observer) observer.disconnect();
+                    return;
+                }
+                if (
+                    !kayitDogrulandi &&
+                    (document.body.innerText || "")
+                        .includes("Kayıt işlemi başarılı")
+                ) {
+                    kayitDogrulandi = true;
+                    console.log("İLK KAYIT DOĞRULANDI.");
+
+                    if (observer) observer.disconnect();
+                }
+            };
+
+            observer = new MutationObserver(mesajKontrol);
+
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+
+            mesajKontrol();
+
+            // 11. KAYDET
+            const kaydet = [...document.querySelectorAll("a.x-btn")]
+                .find(el => el.innerText.trim().startsWith("Kaydet"));
+
+            if (!kaydet) {
+                observer.disconnect();
+                throw new Error("Kaydet butonu bulunamadı.");
+            }
+
+            kaydet.click();
+
+            // 12. İLK KAYIT DOĞRULAMASINI BEKLE
+            const baslangic = Date.now();
+
+            while (!kayitDogrulandi && Date.now() - baslangic < 5000) {
+                await bekle(100);
+                mesajKontrol();
+            }
+
+            observer.disconnect();
+
+            if (!kayitDogrulandi) {
+                throw new Error(
+                    "İlk kayıt başarı mesajı 5 saniye içinde yakalanamadı."
+                );
+            }
+
+            console.log("İlk kayıt başarılı. Formlar menüsüne geçiliyor.");
+            await bekle(500);
+
+            // 13. FORMLAR MENÜSÜ
+            const formlarYazi = [...document.querySelectorAll(".x-btn-inner")]
+                .find(el =>
+                    el.getClientRects().length > 0 &&
+                    el.textContent.trim() === "Formlar"
+                );
+
+            const formlar = formlarYazi?.closest(".x-btn");
+
+            if (!formlar) {
+                throw new Error("Formlar menüsü bulunamadı.");
+            }
+
+            formlar.click();
+            await bekle(700);
+
+            // 14. TOPLUM VE RUH SAĞLIĞI FORMLARI
+            let toplum = null;
+            const toplumBaslangic = Date.now();
+
+            while (!toplum && Date.now() - toplumBaslangic < 5000) {
+                toplum = [...document.querySelectorAll("span.x-menu-item-text")]
+                    .find(el =>
+                        el.textContent.trim() === "Toplum ve Ruh Sağlığı Formları"
+                    );
+
+                if (!toplum) await bekle(200);
+            }
+
+            if (!toplum) {
+                throw new Error("Toplum ve Ruh Sağlığı Formları bulunamadı.");
+            }
+
+            // HOVER
+            toplum.dispatchEvent(new MouseEvent("mouseover", {
+                bubbles: true,
+                cancelable: true,
+                view: window
+            }));
+
+            toplum.dispatchEvent(new MouseEvent("mouseenter", {
+                bubbles: true,
+                cancelable: true,
+                view: window
+            }));
+
+            console.log("Toplum ve Ruh Sağlığı Formları üzerine hover yapıldı.");
+            await bekle(700);
+
+            // 15. DENETİMLİ SERBESTLİK HASTA KARTI
+            let dsKarti = null;
+            const dsBaslangic = Date.now();
+
+            while (!dsKarti && Date.now() - dsBaslangic < 7000) {
+                dsKarti = [...document.querySelectorAll("span.x-menu-item-text")]
+                    .find(el =>
+                        el.textContent.trim() === "Denetimli Serbestlik Hasta Kartı"
+                    );
+
+                if (!dsKarti) await bekle(200);
+            }
+
+            if (!dsKarti) {
+                console.table(
+                    [...document.querySelectorAll("span.x-menu-item-text")].map(el => ({
+                        metin: el.textContent.trim(),
+                        id: el.id,
+                        html: el.outerHTML
+                    }))
+                );
+
+                throw new Error(
+                    "Denetimli Serbestlik Hasta Kartı bulunamadı."
+                );
+            }
+
+            console.log("DS Hasta Kartı bulundu:", dsKarti.outerHTML);
+
+            dsKarti.click();
+            await bekle(1000);
+
+            // 16. EKLE
+            const ekle = [...document.querySelectorAll("a.x-btn")]
+                .find(el =>
+                    el.getClientRects().length > 0 &&
+                    el.innerText.trim().startsWith("Ekle")
+                );
+
+            if (!ekle) {
+                throw new Error("Ekle butonu bulunamadı.");
+            }
+
+            ekle.click();
+            await bekle(300);
+
+            // 16A. DS HASTA KARTINDA YALNIZCA DS TARİHİ TAKVİMİNİ AÇ (V29)
+            if (takvimAcilsin) {
+                // Dinamik ExtJS ID'lerini hedef olarak kullanma: pencere + input[name] + etiket.
+                // Ekle sonrası alanın yüklenmesini bekle, tıklamanın sonucu doğrulanmazsa
+                // yalnızca aynı dsTarih ExtJS bileşeninin expand() metodunu dene.
+                let tarihHedefi = null;
+                const baslangicTakvim = Date.now();
+
+                while (!tarihHedefi && Date.now() - baslangicTakvim < 7000) {
+                    const pencereler = [...document.querySelectorAll('.x-window')]
+                        .filter(p => p.getClientRects().length > 0 &&
+                            p.querySelector('.x-window-header-text')
+                                ?.textContent.trim() === 'Denetimli Serbestlik Hasta Kartı');
+
+                    const hedefler = pencereler.flatMap(p =>
+                        [...p.querySelectorAll('input[name="dsTarih"]')].map(input => {
+                            const satir = input.closest('.x-form-item');
+                            const etiket = satir?.querySelector('.x-form-item-label');
+                            const simge = satir?.querySelector('div.x-form-date-trigger[role="button"]');
+                            return { input, simge, etiket: etiket?.textContent.trim() };
+                        })
+                    ).filter(h => h.etiket === 'DS Tarih:' &&
+                        h.input.getClientRects().length > 0 &&
+                        h.simge?.getClientRects().length > 0);
+
+                    if (hedefler.length > 1) {
+                        throw new Error('Birden fazla DS Tarih takvim simgesi bulundu; işlem durduruldu.');
+                    }
+                    if (hedefler.length === 1) tarihHedefi = hedefler[0];
+                    else await bekle(200);
+                }
+
+                if (!tarihHedefi) {
+                    throw new Error('DS Hasta Kartı içindeki DS Tarih simgesi 7 saniye içinde bulunamadı.');
+                }
+
+                const { input, simge } = tarihHedefi;
+                const alanId = input.id.endsWith('-inputEl')
+                    ? input.id.slice(0, -'-inputEl'.length) : null;
+                const tarihBileseni = alanId && window.Ext?.getCmp
+                    ? window.Ext.getCmp(alanId) : null;
+
+                const takvimGorunuyorMu = () => {
+                    const picker = tarihBileseni?.picker;
+                    if (tarihBileseni && (tarihBileseni.isExpanded === true ||
+                        (picker && typeof picker.isVisible === 'function' && picker.isVisible()))) {
+                        return true;
+                    }
+                    // ExtJS bileşeni erişilemezse yalnızca görünür datepicker varlığını kontrol et.
+                    if (tarihBileseni) return false;
+                    return [...document.querySelectorAll('.x-datepicker')].some(el =>
+                        el.getClientRects().length > 0);
+                };
+
+                // Render edilen alan ile olay dinleyicilerinin hazır olmasına fırsat ver.
+                await bekle(450);
+
+                if (!takvimGorunuyorMu()) {
+                    simge.click();
+                    await bekle(350);
+                }
+
+                if (!takvimGorunuyorMu() &&
+                    tarihBileseni && typeof tarihBileseni.expand === 'function') {
+                    console.warn('[DS TURBO] DS Tarih simgesine tıklama takvimi açmadı; aynı alan expand() ile deneniyor.');
+                    tarihBileseni.expand();
+                    await bekle(250);
+                }
+
+                if (!takvimGorunuyorMu()) {
+                    throw new Error('DS Tarih simgesi bulundu fakat takvimin açıldığı doğrulanamadı; elle kontrol et.');
+                }
+
+                console.log('[DS TURBO V29] DS Tarih takvimi açıldığı doğrulandı.', {
+                    input: input.outerHTML,
+                    simge: simge.outerHTML,
+                    extBileseniBulundu: !!tarihBileseni
+                });
+            }
+
+            await bekle(300);
+
+            console.log("DS Hasta Kartı açıldı. Manuel giriş bekleniyor.");
+
+            // 17. DS KAYIT BAŞARISINI BEKLE
+            // Eski kayıt başarı mesajı ekranda kaldıysa önce kaybolmasını,
+            // ardından DS kaydına ait yeni başarı mesajını bekle.
+            window.fonetDSKayitBekleniyor = true;
+            butonlariKilitle(true);
+            durum.textContent = islemAdi + " - DS kaydı bekleniyor...";
+
+            const basariMesaji = "Kayıt işlemi başarılı";
+            let dsMesajTemizlendi =
+                !(document.body.innerText || "").includes(basariMesaji);
+
+            if (window.fonetDSObserver) {
+                window.fonetDSObserver.disconnect();
+            }
+
+            window.fonetDSObserver = new MutationObserver(() => {
+                if (window.fonetAbortRequested) return;
+                const sayfaMetni = document.body.innerText || "";
+                const mesajVar = sayfaMetni.includes(basariMesaji);
+
+                if (!dsMesajTemizlendi) {
+                    if (!mesajVar) {
+                        dsMesajTemizlendi = true;
+                        console.log("Önceki başarı mesajı temizlendi; DS kayıt mesajı bekleniyor.");
+                    }
+                    return;
+                }
+
+                if (mesajVar) {
+                    // Aynı başarı mesajının tekrar tetiklenmesini önle.
+                    window.fonetDSObserver.disconnect();
+                    window.fonetF8Running = true;
+                    butonlariKilitle(true);
+                    console.log("Yeni DS kayıt başarı mesajı yakalandı.");
+                    dsKayitSonrasiIslemleri();
+                }
+            });
+
+            window.fonetDSObserver.observe(document.body, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+            abortKontrol();
+
+            alert(
+                "DS Hasta Kartı açıldı. Gerekli alanları manuel doldurup Kaydet'e bas. " +
+                "Kayıt başarılı olduğunda pencere otomatik kapanacak ve Hizmet Listesi'ne DNT1 gönderilecek."
+            );
+
+        } catch (err) {
+            if (abortHatasiMi(err)) {
+                durum.textContent = "ABORT MISSION: " + islemAdi + " durduruldu.";
+                console.warn("[DS TURBO] " + islemAdi + " kullanıcı tarafından durduruldu.");
+            } else {
+                durum.textContent = islemAdi + " hatası.";
+                alert(islemAdi + " otomasyonu durdu: " + err.message);
+                console.error(err);
+            }
+
+        } finally {
+            // İptal tam DS izleyicisi kurulurken geldiyse bekleyen observer ve kilidi temizle.
+            if (window.fonetAbortRequested && window.fonetDSKayitBekleniyor) {
+                if (window.fonetDSObserver) {
+                    window.fonetDSObserver.disconnect();
+                    window.fonetDSObserver = null;
+                }
+                window.fonetDSKayitBekleniyor = false;
+            }
+
+            window.fonetF8Running = false;
+            // DS kaydı manuel olarak bekleniyorsa tüm butonlar kilitli kalır.
+            if (!window.fonetDSKayitBekleniyor) {
+                butonlariKilitle(false);
+            }
+        }
+    }
+
+    // BUTONLARA FONKSİYONLARI BAĞLA
+    standartButon.addEventListener("click", standartGiris);
+
+    ilkBasvuruButon.addEventListener("click", () => ilkBasvuru(
+        `istanbul anadolu ds
+1/3
+ilk idrar
+tetkik istendi.
+üçlü gruba alındı.`,
+        "İlk başvuru",
+        true
+    ));
+
+    // Cezaevi DS: İlk Başvuru ile aynı akış; yalnızca Şikayet/Özgeçmiş metni farklı.
+    cezaeviDsButon.addEventListener("click", () => ilkBasvuru(
+        "Cezaevinden getirilen şahıs, DS, idrar istendi",
+        "Cezaevi DS",
+        true
+    ));
+
+    kontrolSevkButon.addEventListener("click", () => ilkBasvuru(
+        `kontrol amaçlı sevk
+tetkik istendi.`,
+        "Kontrol amaçlı sevk",
+        true
+    ));
+
+    // F8 = STANDART GİRİŞ
+    window.fonetF8Handler = function(e) {
+        if (e.key !== "F8") return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        standartGiris();
+    };
+
+    document.addEventListener("keydown", window.fonetF8Handler);
+
+    // 702730 MAKRO
+    makroButon.addEventListener("click", () => {
+        const makro = document.querySelector(
+            'input[name="makrokodu"]'
+        );
+
+        if (!makro || makro.disabled || makro.readOnly) {
+            durum.textContent = "Makro alanı bulunamadı veya pasif.";
+            console.error("Makro alanı bulunamadı veya pasif.");
+            return;
+        }
+
+        const setter = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype, "value"
+        ).set;
+
+        makro.focus();
+        setter.call(makro, "702730");
+
+        makro.dispatchEvent(new Event("input", { bubbles: true }));
+        makro.dispatchEvent(new Event("change", { bubbles: true }));
+
+        makro.dispatchEvent(new KeyboardEvent("keydown", {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            which: 13,
+            bubbles: true
+        }));
+
+        makro.dispatchEvent(new KeyboardEvent("keyup", {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            which: 13,
+            bubbles: true
+        }));
+
+        durum.textContent = "702730 gönderildi.";
+        console.log("702730 makro kodu gönderildi.");
+    });
+
+    console.log("Fonet paneli hazır.");
+    console.log("Fonet paneli hazır: Standart Giriş, İlk Başvuru, Cezaevi DS, Kontrol Amaçlı Sevk, 702730, 3 lü grup, 6 lı grup ve ABORT MISSION.");
+    console.log("3'lü grupta kirli idrar EVET ise PAM+ notu kaydedilir, Amatem Ek-8 Formu açılır ve DNT1 gönderilmez; 3 idrar sonrası temiz kontrol yalnızca notu kaydeder. HAYIR yanıtında X/3 notu + DNT1 akışı korunur. 6'lı grup seçimleri ortak not kaydı ve DNT1 akışını başlatır.");
+})();
